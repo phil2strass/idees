@@ -1,0 +1,71 @@
+name: idee
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: idee
+      POSTGRES_USER: idee
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Renseigner DB_PASSWORD dans deploy/.env}
+    volumes:
+      - idee-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U idee -d idee']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build:
+      context: .
+      dockerfile: idee-service/Dockerfile
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: idee
+      DB_USER: idee
+      DB_PASSWORD: ${DB_PASSWORD:?Renseigner DB_PASSWORD}
+      DB_CONTEXTS: production
+      IDEE_IMPORT_TOKEN: ${IDEE_IMPORT_TOKEN:?Renseigner IDEE_IMPORT_TOKEN}
+      DATATOURISME_API_KEY: ${DATATOURISME_API_KEY:-}
+      DATATOURISME_ENABLED: ${DATATOURISME_ENABLED:-false}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-2603}
+      MISTRAL_AUTO_ENABLED: ${MISTRAL_AUTO_ENABLED:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_TRANSLATION_MODEL: ${OPENAI_TRANSLATION_MODEL:-gpt-4.1-mini-2025-04-14}
+      OPENAI_TRANSLATIONS_ENABLED: ${OPENAI_TRANSLATIONS_ENABLED:-true}
+      SERVER_ADDRESS: 0.0.0.0
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 768m
+  ssr:
+    build:
+      context: .
+      dockerfile: idee-front/Dockerfile
+      target: ssr
+    environment:
+      API_ORIGIN: http://api:8087
+      PUBLIC_ORIGIN: ${IDEE_PUBLIC_ORIGIN:-https://idees.cavousdit.com}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+  web:
+    build:
+      context: .
+      dockerfile: idee-front/Dockerfile
+      target: web
+    ports:
+      - '127.0.0.1:${IDEE_HTTP_PORT:-9081}:80'
+    depends_on:
+      ssr:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  idee-db:

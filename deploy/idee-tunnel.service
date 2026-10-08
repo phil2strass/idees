@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenAI MCP tunnel for Idees Alsace
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/home/debian/idee/.tunnel/profiles/idee.yaml
+ConditionPathExists=/home/debian/idee/.tunnel/openai.key
+
+[Service]
+Type=simple
+User=debian
+Group=debian
+WorkingDirectory=/home/debian/idee
+ExecStart=/home/debian/idee/.tunnel/bin/tunnel-client run --profile idee --profile-dir /home/debian/idee/.tunnel/profiles --health.url-file /home/debian/idee/.tunnel/health.url
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/debian/idee/.tunnel
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

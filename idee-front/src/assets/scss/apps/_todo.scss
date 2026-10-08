@@ -1,0 +1,25 @@
+@use "../variables" as *;
+
+.todo-item {
+  position: relative;
+
+  .edit-view {
+    position: absolute;
+    left: 0;
+    background: $white;
+    width: 100%;
+    top: 15px;
+    padding: 0 13px;
+    height: 70px;
+  }
+}
+
+.app-left-sidebar {
+  &.mat-sidenav {
+    width: 240px;
+  }
+}
+
+.completed {
+  text-decoration: line-through;
+}

@@ -1,0 +1,327 @@
+@use "../variables" as *;
+
+html .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  gap: 0;
+  height: 72px;
+  padding: 0 clamp(16px, 2vw, 28px);
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 1px solid #e1e5ed;
+  box-shadow: 0 2px 10px rgba(30, 42, 70, 0.04);
+  backdrop-filter: blur(14px);
+
+  .header-topbar-links {
+    align-items: center;
+    gap: clamp(14px, 1.5vw, 22px);
+    height: 100%;
+  }
+
+  > .mat-mdc-icon-button {
+    border-radius: 6px;
+    color: #526079;
+    transition: background 150ms ease, color 150ms ease;
+
+    &:hover {
+      color: #493bd1;
+      background: #eceafd;
+    }
+  }
+
+  .toolbar-icon-button {
+    width: 38px;
+    height: 38px;
+    border: 0;
+    background: transparent;
+  }
+
+  .toolbar-menu-button {
+    width: 48px;
+    height: 48px;
+    margin-right: clamp(14px, 1.5vw, 22px);
+    color: #263652;
+    border: 1px solid #dce1ea;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .header-topbar-links > .mat-mdc-button {
+    min-width: 140px;
+    min-height: 48px;
+    padding: 0 15px;
+    border: 1px solid #dce1ea;
+    border-radius: 10px;
+    color: #17243f;
+    background: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .header-topbar-links > .mat-mdc-button:hover {
+    border-color: #c7ceda;
+    background: #f8f9fc;
+  }
+
+  .header-dictionary-language__icon {
+    margin-right: 10px;
+    color: #172b50;
+  }
+
+  .header-word-search {
+    width: clamp(380px, 42vw, 500px);
+  }
+
+  .header-word-search__icon {
+    margin: 0 12px 0 5px;
+    color: #748198;
+    font-size: 20px;
+  }
+
+  .header-word-search .mat-mdc-text-field-wrapper {
+    height: 48px;
+    border-radius: 10px;
+    background: #ffffff;
+    transition: background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .header-word-search .mdc-notched-outline__leading {
+    border-radius: 10px 0 0 10px;
+  }
+
+  .header-word-search .mdc-notched-outline__trailing {
+    border-radius: 0 10px 10px 0;
+  }
+
+  .header-word-search .mat-mdc-form-field-flex {
+    height: 48px;
+    align-items: center;
+  }
+
+  .header-word-search .mat-mdc-form-field-infix {
+    width: auto;
+    min-height: 48px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .header-word-search .mdc-notched-outline__leading,
+  .header-word-search .mdc-notched-outline__notch,
+  .header-word-search .mdc-notched-outline__trailing {
+    border-color: #d9dfe9;
+  }
+
+  .header-word-search.mat-focused .mat-mdc-text-field-wrapper {
+    background: #ffffff;
+    box-shadow: 0 0 0 2px rgba(73, 59, 209, 0.12);
+  }
+
+  .header-word-search.mat-focused .mdc-notched-outline__leading,
+  .header-word-search.mat-focused .mdc-notched-outline__notch,
+  .header-word-search.mat-focused .mdc-notched-outline__trailing {
+    border-color: #6356dc;
+  }
+
+  .header-word-search input {
+    color: #172033;
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+
+  .header-word-search input::placeholder {
+    color: #9aa2b4;
+    font-weight: 400;
+    opacity: 1;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 14px;
+    border-left: 0;
+  }
+
+  .header-actions .toolbar-icon-button {
+    border-radius: 6px;
+    color: #526079;
+  }
+
+  .header-actions .toolbar-icon-button:hover {
+    color: #493bd1;
+    background: #eceafd;
+  }
+
+  .toolbar-theme-button {
+    order: 1;
+  }
+
+  .header-actions__separator {
+    order: 2;
+    width: 1px;
+    height: 26px;
+    margin: 0 4px;
+    background: #d9dee8;
+  }
+
+  .toolbar-language-button {
+    order: 3;
+  }
+
+  .header-login-button {
+    order: 4;
+    min-height: 40px;
+    padding: 0 17px;
+    border: 1px solid #493bd1;
+    border-radius: 6px;
+    color: #ffffff;
+    background: #493bd1;
+    font-weight: 700;
+  }
+
+  .toolbar-language-button img {
+    width: 22px !important;
+    height: 22px !important;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px #dfe4ec;
+  }
+
+  .toolbar-profile-button {
+    order: 4;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    color: #ffffff;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .toolbar-profile-button__photo {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .notification-badge{
+    .mat-badge-content{
+      left: 80%;
+      bottom: 85%;
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  html .topbar {
+    height: 64px;
+    padding: 0 12px;
+
+    .header-actions {
+      gap: 2px;
+      padding-left: 4px;
+      border-left: 0;
+    }
+
+    .header-actions__separator {
+      display: none;
+    }
+
+    .toolbar-profile-button {
+      width: 40px;
+      height: 40px;
+    }
+  }
+}
+
+@media (max-width: 1100px) {
+  html .topbar {
+    height: 72px;
+    padding: 0 18px;
+
+    .toolbar-menu-button {
+      width: 44px;
+      height: 44px;
+      margin-right: 14px;
+    }
+
+    .header-topbar-links {
+      gap: 12px;
+    }
+
+    .header-topbar-links > .mat-mdc-button {
+      min-height: 44px;
+    }
+
+    .header-word-search {
+      width: clamp(300px, 34vw, 390px);
+    }
+
+    .header-word-search .mat-mdc-text-field-wrapper,
+    .header-word-search .mat-mdc-form-field-flex {
+      height: 44px;
+    }
+
+    .header-word-search .mat-mdc-form-field-infix {
+      min-height: 44px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+  }
+}
+
+.topbar-dd {
+  min-width: 360px !important;
+}
+
+.apps-dd {
+  min-width: 300px !important;
+  overflow: unset !important;
+
+  .mat-mdc-menu-content {
+    padding: 0;
+  }
+}
+
+.text-hover-primary:hover {
+  .hover-text {
+    color: $primary;
+  }
+}
+
+.upgrade-bg {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  height: 100%;
+}
+
+.object-cover {
+  object-fit: cover;
+}
+
+.profile-dd {
+  margin-top: -5px;
+  margin-left: -5px;
+}
+
+.dark-theme {
+  .topbar {
+    .mat-mdc-icon-button {
+      color: $dark-text-secondary !important;
+    }
+
+    .mdc-button {
+      --mat-button-text-label-text-color: $dark-text-secondary !important;
+    }
+  }
+}

@@ -1,0 +1,250 @@
+@use "sass:map";
+@use "@angular/material" as mat;
+
+@include mat.table-overrides(
+  (
+    background-color: var(--mat-card-elevated-container-color),
+  )
+);
+
+:root {
+  --app-mat-table-row-bg: #ffffff;
+  --app-mat-table-row-alt-bg: #f5f5f5;
+  --app-mat-table-header-bg: #fafafa;
+  --app-mat-table-footer-bg: #fafafa;
+  --app-mat-table-text: #000000;
+  --app-mat-table-border: rgba(0, 0, 0, 0.08);
+  --app-mat-table-hover-bg: #ebebeb;
+  --app-mat-table-selected-row-bg: rgba(15, 111, 168, 0.2);
+  --app-mat-table-checkbox-selected-bg: #0f6fa8;
+  --app-mat-table-font-size: 0.875rem;
+  --app-mat-table-line-height: 1.25rem;
+  --app-mat-table-cell-padding-x: 0.75rem;
+  --app-mat-table-cell-padding-y: 0.25rem;
+  --app-mat-table-header-padding-y: var(--app-mat-table-cell-padding-y);
+  --app-mat-table-row-min-height: 2rem;
+  --app-mat-table-header-min-height: var(--app-mat-table-row-min-height);
+  --app-mat-table-chip-height: 1rem;
+  --app-mat-table-chip-font-size: 0.625rem;
+  --app-mat-table-chip-line-height: 0.75rem;
+}
+
+table[mat-table],
+mat-table {
+  background-color: transparent;
+  color: var(--app-mat-table-text);
+}
+
+table[mat-table] {
+  border-collapse: collapse;
+  border-spacing: 0;
+  max-width: 100%;
+  overflow: auto;
+  position: relative;
+}
+
+table[mat-table] .mat-mdc-header-row,
+mat-table .mat-mdc-header-row {
+  background-color: var(--app-mat-table-header-bg);
+  min-height: var(--app-mat-table-header-min-height);
+  height: auto;
+}
+
+table[mat-table] .mat-mdc-footer-row,
+mat-table .mat-mdc-footer-row {
+  background-color: var(--app-mat-table-footer-bg);
+  height: auto;
+}
+
+table[mat-table] .mat-mdc-header-cell,
+table[mat-table] .mat-mdc-cell,
+table[mat-table] .mat-mdc-footer-cell,
+mat-table .mat-mdc-header-cell,
+mat-table .mat-mdc-cell,
+mat-table .mat-mdc-footer-cell {
+  color: var(--app-mat-table-text);
+  font-size: var(--app-mat-table-font-size);
+  font-weight: 400;
+  border-inline-start: 1px solid var(--app-mat-table-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+table[mat-table] .mat-mdc-header-cell:first-child,
+table[mat-table] .mat-mdc-cell:first-child,
+table[mat-table] .mat-mdc-footer-cell:first-child,
+mat-table .mat-mdc-header-cell:first-child,
+mat-table .mat-mdc-cell:first-child,
+mat-table .mat-mdc-footer-cell:first-child {
+  border-inline-start-width: 0;
+}
+
+table[mat-table] .mat-mdc-row,
+mat-table .mat-mdc-row {
+  border-bottom-width: 0 !important;
+  font-weight: 400;
+  min-height: var(--app-mat-table-row-min-height);
+  height: auto;
+}
+
+table[mat-table] .mat-mdc-row:nth-child(odd),
+mat-table .mat-mdc-row:nth-child(odd) {
+  background-color: var(--app-mat-table-row-bg) !important;
+}
+
+table[mat-table] .mat-mdc-row:nth-child(even),
+mat-table .mat-mdc-row:nth-child(even) {
+  background-color: var(--app-mat-table-row-alt-bg) !important;
+}
+
+table[mat-table] .mat-mdc-cell,
+mat-table .mat-mdc-cell {
+  background-color: var(--app-mat-table-row-bg) !important;
+  border-bottom-width: 0 !important;
+  line-height: var(--app-mat-table-line-height);
+  padding: var(--app-mat-table-cell-padding-y) var(--app-mat-table-cell-padding-x);
+}
+
+table[mat-table] .mat-mdc-row:nth-child(odd) .mat-mdc-cell,
+mat-table .mat-mdc-row:nth-child(odd) .mat-mdc-cell {
+  background-color: var(--app-mat-table-row-bg) !important;
+}
+
+table[mat-table] .mat-mdc-row:nth-child(even) .mat-mdc-cell,
+mat-table .mat-mdc-row:nth-child(even) .mat-mdc-cell {
+  background-color: var(--app-mat-table-row-alt-bg) !important;
+}
+
+table[mat-table] .mat-mdc-row:hover,
+table[mat-table] .mat-mdc-row:hover .mat-mdc-cell,
+mat-table .mat-mdc-row:hover,
+mat-table .mat-mdc-row:hover .mat-mdc-cell {
+  background-color: var(--app-mat-table-hover-bg) !important;
+}
+
+table[mat-table] .mat-mdc-row.app-table-row-selected,
+table[mat-table] .mat-mdc-row.app-table-row-selected:hover,
+mat-table .mat-mdc-row.app-table-row-selected,
+mat-table .mat-mdc-row.app-table-row-selected:hover {
+  background-color: transparent !important;
+}
+
+table[mat-table] .mat-mdc-row.app-table-row-selected:nth-child(odd) .mat-mdc-cell,
+mat-table .mat-mdc-row.app-table-row-selected:nth-child(odd) .mat-mdc-cell {
+  background:
+    linear-gradient(var(--app-mat-table-selected-row-bg), var(--app-mat-table-selected-row-bg)),
+    var(--app-mat-table-row-bg) !important;
+}
+
+table[mat-table] .mat-mdc-row.app-table-row-selected:nth-child(even) .mat-mdc-cell,
+mat-table .mat-mdc-row.app-table-row-selected:nth-child(even) .mat-mdc-cell {
+  background:
+    linear-gradient(var(--app-mat-table-selected-row-bg), var(--app-mat-table-selected-row-bg)),
+    var(--app-mat-table-row-alt-bg) !important;
+}
+
+table[mat-table] .mat-mdc-header-cell,
+mat-table .mat-mdc-header-cell {
+  background-color: var(--app-mat-table-header-bg);
+  border-bottom: 1px solid var(--app-mat-table-border);
+  font-weight: 400 !important;
+  line-height: var(--app-mat-table-line-height);
+  padding: var(--app-mat-table-header-padding-y) var(--app-mat-table-cell-padding-x);
+}
+
+table[mat-table] .mat-mdc-footer-cell,
+mat-table .mat-mdc-footer-cell {
+  background-color: var(--app-mat-table-footer-bg);
+  border-top: 1px solid var(--app-mat-table-border);
+  padding: var(--app-mat-table-cell-padding-y) var(--app-mat-table-cell-padding-x);
+}
+
+table[mat-table] .mat-mdc-chip,
+table[mat-table] .mat-mdc-chip-option,
+mat-table .mat-mdc-chip,
+mat-table .mat-mdc-chip-option {
+  --mdc-chip-container-height: var(--app-mat-table-chip-height);
+  --mdc-chip-label-text-size: var(--app-mat-table-chip-font-size);
+  --mdc-chip-label-text-line-height: var(--app-mat-table-chip-line-height);
+}
+
+table[mat-table] .mat-mdc-chip .mdc-evolution-chip__text-label,
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__text-label,
+mat-table .mat-mdc-chip .mdc-evolution-chip__text-label,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__text-label {
+  font-size: var(--app-mat-table-chip-font-size);
+  line-height: var(--app-mat-table-chip-line-height);
+}
+
+table[mat-table] .mat-mdc-chip .mdc-evolution-chip__action,
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__action,
+mat-table .mat-mdc-chip .mdc-evolution-chip__action,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__action {
+  min-height: var(--app-mat-table-chip-height);
+  height: var(--app-mat-table-chip-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 0.1875rem;
+  padding-right: 0.1875rem;
+}
+
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__graphic,
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__checkmark,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__graphic,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__checkmark {
+  display: none !important;
+  width: 0 !important;
+  margin: 0 !important;
+}
+
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__cell--primary,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__cell--primary {
+  padding-left: 0 !important;
+}
+
+table[mat-table] .mat-mdc-chip-option .mdc-evolution-chip__text-label,
+mat-table .mat-mdc-chip-option .mdc-evolution-chip__text-label {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+table[mat-table] .mat-mdc-checkbox .mdc-checkbox__background,
+mat-table .mat-mdc-checkbox .mdc-checkbox__background {
+  background-color: #ffffff !important;
+}
+
+table[mat-table] .mat-column-select,
+mat-table .mat-column-select {
+  text-align: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+table[mat-table] .mat-column-select .mat-mdc-checkbox,
+mat-table .mat-column-select .mat-mdc-checkbox {
+  display: inline-flex;
+  margin: 0 !important;
+}
+
+table[mat-table] .mat-column-select .m-l-16,
+mat-table .mat-column-select .m-l-16 {
+  margin-left: 0 !important;
+}
+
+table[mat-table] .mat-mdc-checkbox.mat-mdc-checkbox-checked .mdc-checkbox__background,
+table[mat-table] .mat-mdc-checkbox.mat-mdc-checkbox-indeterminate .mdc-checkbox__background,
+mat-table .mat-mdc-checkbox.mat-mdc-checkbox-checked .mdc-checkbox__background,
+mat-table .mat-mdc-checkbox.mat-mdc-checkbox-indeterminate .mdc-checkbox__background {
+  background-color: var(--app-mat-table-checkbox-selected-bg) !important;
+  border-color: var(--app-mat-table-checkbox-selected-bg) !important;
+}
+
+table[mat-table] .mat-mdc-checkbox .mdc-checkbox__checkmark-path,
+mat-table .mat-mdc-checkbox .mdc-checkbox__checkmark-path {
+  stroke: #ffffff !important;
+}
+
+table[mat-table] .mat-mdc-checkbox .mdc-checkbox__mixedmark,
+mat-table .mat-mdc-checkbox .mdc-checkbox__mixedmark {
+  background-color: #ffffff !important;
+}

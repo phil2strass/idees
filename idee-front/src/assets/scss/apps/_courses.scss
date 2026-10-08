@@ -1,0 +1,25 @@
+@use "../variables" as *;
+
+.course-header {
+  padding: 12px !important;
+  color: $white;
+}
+
+.course-header,
+.detail-bg {
+  &.Angular {
+    background-color: var(--mat-sys-error);
+  }
+
+  &.Web {
+    background-color: var(--mat-sys-primary);
+  }
+
+  &.Design {
+    background-color: var(--mat-sys-secondary);
+  }
+
+  &.Android {
+    background-color: $warning;
+  }
+}

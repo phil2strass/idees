@@ -1,0 +1,646 @@
+<main id="content" class="outing-page" tabindex="-1">
+  <nav class="breadcrumbs" [attr.aria-label]="t('Fil d’Ariane')">
+    <a [routerLink]="i18n.path('/')">{{ t("Accueil") }}</a
+    ><i-tabler name="chevron-right" /><a
+      [routerLink]="i18n.path('/')"
+      fragment="sorties"
+      >{{ t("Les sorties") }}</a
+    ><i-tabler name="chevron-right" /><span aria-current="page">{{
+      outing()?.title || t("Votre sortie")
+    }}</span>
+  </nav>
+  @if (loading()) {
+    <div class="page-state" role="status">
+      <i-tabler name="compass" />
+      <p>{{ t("Nous préparons votre prochaine découverte…") }}</p>
+    </div>
+  } @else if (errorStatus()) {
+    <div class="page-state" role="alert">
+      <p class="eyebrow">
+        {{
+          errorStatus() === 404
+            ? t("UNE AUTRE ENVIE ?")
+            : t("UN PETIT CONTRETEMPS")
+        }}
+      </p>
+      <h1 id="outing-title" tabindex="-1">
+        {{
+          errorStatus() === 404
+            ? t("Cette sortie est introuvable.")
+            : t("Cette sortie est momentanément indisponible.")
+        }}
+      </h1>
+      <p>
+        {{
+          errorStatus() === 404
+            ? t(
+                "Elle a peut-être été retirée. Il reste de belles idées à découvrir en Alsace."
+              )
+            : t(
+                "Nous n’avons pas pu charger ses informations. Réessayez dans quelques instants."
+              )
+        }}
+      </p>
+      @if (errorStatus() !== 404) {
+        <button class="primary" (click)="retry()">{{ t("Réessayer") }}</button>
+      }
+      <a class="back-link" [routerLink]="i18n.path('/')" fragment="sorties">{{
+        t("← Retour aux sorties")
+      }}</a>
+    </div>
+  } @else if (outing(); as o) {
+    <article class="outing-sheet">
+      <div
+        class="opening-grid"
+        [class.without-photo]="!o.images.length || coverFailed()"
+      >
+        <header class="outing-heading" id="presentation">
+          <div>
+            <div class="category-line">
+              @for (c of o.categories; track c.slug) {
+                <span>{{ t(c.name) }}</span>
+              }
+            </div>
+            <h1 id="outing-title" tabindex="-1" [attr.lang]="o.contentLanguage">
+              {{ o.title }}
+            </h1>
+            <p class="intro" [attr.lang]="o.contentLanguage || 'fr'">
+              {{ introduction() }}
+            </p>
+          </div>
+        </header>
+        <div class="photo-area">
+          @if (o.images[0]; as image) {
+            @if (!coverFailed()) {
+              <figure class="cover">
+                <img
+                  [src]="image.url"
+                  [alt]="image.alt"
+                  (error)="coverFailed.set(true)"
+                  fetchpriority="high"
+                  decoding="async"
+                  referrerpolicy="no-referrer"
+                />
+                @if (image.credit || image.license) {
+                  <figcaption>
+                    {{ image.credit ? t("Photo : ") + image.credit : ""
+                    }}{{ image.credit && image.license ? " · " : ""
+                    }}{{ image.license }}
+                  </figcaption>
+                }
+              </figure>
+            }
+          }
+          <div class="share-area">
+            <button class="share-button" (click)="share()">
+              <i-tabler name="share" />{{ t("Partager cette sortie") }}</button
+            ><span class="share-status" role="status">{{
+              shareMessage()
+            }}</span>
+            @if (showShareField()) {
+              <label class="share-field"
+                >{{ t("Lien de la sortie")
+                }}<input
+                  readonly
+                  [value]="shareUrl()"
+                  (focus)="$any($event.target).select()"
+              /></label>
+            }
+          </div>
+        </div>
+        <aside
+          class="practical-column"
+          [attr.aria-label]="t('Préparer votre sortie')"
+        >
+          <div class="practical-card">
+            <h2>{{ t("Préparer votre sortie") }}</h2>
+            <div class="practical-fact">
+              <i-tabler name="map-pin" />
+              <div>
+                <span>{{ t("Le lieu") }}</span
+                ><strong>{{ o.placeName || t("Lieu à confirmer") }}</strong>
+                @if (o.address) {
+                  <p>{{ o.address }}</p>
+                }
+                <p>{{ o.postalCode }} {{ o.city }} · {{ o.department }}</p>
+              </div>
+            </div>
+            <div class="practical-fact">
+              <i-tabler
+                [name]="o.kind === 'permanent' ? 'sun' : 'calendar-event'"
+              />
+              <div>
+                <span>{{ t("Quand ?") }}</span
+                ><strong>{{
+                  o.kind === "permanent" ? t("Sans date imposée") : dateLabel(o)
+                }}</strong>
+                @if (o.kind !== "permanent") {
+                  @if (next(o); as x) {
+                    <p>{{ timeLabel(x) }}</p>
+                  }
+                }
+              </div>
+            </div>
+            <div class="practical-price">
+              <span>{{ t("Le budget") }}</span
+              ><strong>{{ price(o) }}</strong>
+            </div>
+            @if (safeUrl(o.bookingUrl); as booking) {
+              <a
+                class="primary"
+                [href]="booking"
+                target="_blank"
+                rel="noopener noreferrer"
+                >{{ t("Réserver auprès de l’organisateur") }}
+                <i-tabler name="arrow-up-right"
+              /></a>
+            } @else {
+              <a
+                class="primary"
+                [routerLink]="[]"
+                [fragment]="o.kind === 'permanent' ? 'pratique' : 'dates'"
+                >{{
+                  o.kind === "permanent"
+                    ? t("Préparer ma visite")
+                    : t("Voir les dates")
+                }}
+                <i-tabler name="arrow-right"
+              /></a>
+            }
+            @if (o.city || o.placeName) {
+              <a
+                class="map-link"
+                [href]="mapUrl(o)"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><i-tabler name="map-pin" />{{
+                  t("Ouvrir dans Google Maps ↗")
+                }}</a
+              >
+            }
+            @if (safeUrl(o.website); as website) {
+              <a
+                class="map-link"
+                [href]="website"
+                target="_blank"
+                rel="noopener noreferrer"
+                >{{ t("Site web de la sortie ↗") }}</a
+              >
+            }
+          </div>
+        </aside>
+      </div>
+      <div class="outing-body">
+        <div class="outing-body-inner">
+          @if (o.isDemo) {
+            <p class="demo-note">
+              <i-tabler name="info-circle" />{{
+                t(
+                  "Fiche de démonstration : les informations, dates et tarifs sont fictifs."
+                )
+              }}
+            </p>
+          }
+          <div class="detail-layout">
+            <div class="story-column">
+              <nav
+                class="section-nav"
+                [attr.aria-label]="t('Dans cette fiche')"
+              >
+                <a [routerLink]="[]" fragment="presentation">{{
+                  t("La sortie")
+                }}</a
+                ><a [routerLink]="[]" fragment="dates">{{
+                  t("Dates & horaires")
+                }}</a
+                ><a [routerLink]="[]" fragment="tarifs">{{ t("Tarifs") }}</a
+                ><a [routerLink]="[]" fragment="pratique">{{
+                  t("Infos pratiques")
+                }}</a>
+                @if (visitorContacts().length) {
+                  <a [routerLink]="[]" fragment="contacts">{{
+                    t("Contacts")
+                  }}</a>
+                }
+                @if (documents().length) {
+                  <a [routerLink]="[]" fragment="documents">{{
+                    t("Documents & liens")
+                  }}</a>
+                }
+              </nav>
+              <div class="quick-facts">
+                <div>
+                  <i-tabler name="users" /><span
+                    >{{ t("Pour qui ?")
+                    }}<strong>{{
+                      o.minAge
+                        ? t("Dès {age} ans", { age: o.minAge })
+                        : o.sourceDetails
+                          ? t("Public à confirmer")
+                          : t("Tout public")
+                    }}</strong></span
+                  >
+                </div>
+                <div>
+                  <i-tabler name="clock" /><span
+                    >{{ t("Combien de temps ?")
+                    }}<strong>{{
+                      o.durationMinutes
+                        ? t("{minutes} minutes environ", {
+                            minutes: o.durationMinutes,
+                          })
+                        : o.sourceDetails
+                          ? t("Durée non précisée")
+                          : t("À votre rythme")
+                    }}</strong></span
+                  >
+                </div>
+                <div>
+                  <i-tabler
+                    [name]="
+                      o.environment === 'outdoor' ? 'trees' : 'building-bank'
+                    "
+                  /><span
+                    >{{ t("Le cadre")
+                    }}<strong>{{
+                      o.environment === "outdoor"
+                        ? t("En plein air")
+                        : o.environment === "indoor"
+                          ? t("À l’intérieur")
+                          : o.sourceDetails
+                            ? t("À confirmer")
+                            : t("Intérieur & extérieur")
+                    }}</strong></span
+                  >
+                </div>
+              </div>
+              <section class="story-section info-section" id="dates">
+                <div class="section-title">
+                  <i-tabler name="calendar-event" />
+                  <h2>
+                    {{
+                      o.kind === "permanent"
+                        ? t("Quand en profiter ?")
+                        : t("Dates & horaires")
+                    }}
+                  </h2>
+                </div>
+                @if (o.kind === "permanent") {
+                  <div class="permanent-note">
+                    <i-tabler name="sun" />
+                    <div>
+                      <strong>{{ t("Une envie, le bon moment.") }}</strong>
+                      <p>
+                        {{
+                          t(
+                            "Cette sortie est proposée sans date imposée. Vérifiez les horaires et les conditions d’accès avant votre départ."
+                          )
+                        }}
+                      </p>
+                    </div>
+                  </div>
+                } @else {
+                  @for (
+                    s of o.sourceName === "datatourisme" ? [] : o.schedules;
+                    track $index
+                  ) {
+                    @if (s.label) {
+                      <p class="schedule-label">{{ s.label }}</p>
+                    }
+                  }
+                  <div class="sessions">
+                    @for (x of visibleDates(); track $index) {
+                      <div
+                        class="session"
+                        [class.cancelled]="x.status === 'cancelled'"
+                      >
+                        <div class="session-date">
+                          <strong>{{ datePart(x, "day") }}</strong
+                          ><span>{{ datePart(x, "month") }}</span>
+                        </div>
+                        <div class="session-content">
+                          <strong
+                            >{{ formatDate(x.startsAt, x.timezone) }}
+                            @if (
+                              formatDate(x.startsAt, x.timezone) !== endLabel(x)
+                            ) {
+                              — {{ endLabel(x) }}
+                            }</strong
+                          ><span
+                            >{{ timeLabel(x) }}
+                            <small>· {{ x.timezone }}</small></span
+                          >
+                          @if (x.status === "cancelled") {
+                            <b class="status-tag">{{ t("Annulé") }}</b>
+                          }
+                          @if (x.status === "rescheduled") {
+                            <b class="status-tag">{{ t("Reporté") }}</b>
+                          }
+                          @if (
+                            x.placeName &&
+                            (x.placeName !== o.placeName ||
+                              x.city !== o.city ||
+                              x.status === "rescheduled")
+                          ) {
+                            <span>{{ x.placeName }} · {{ x.city }}</span>
+                          }
+                          @if (x.note) {
+                            <p>{{ x.note }}</p>
+                          }
+                        </div>
+                      </div>
+                    } @empty {
+                      <p class="muted">
+                        {{ t("Les prochaines dates restent à confirmer.") }}
+                      </p>
+                    }
+                  </div>
+                  @if (o.occurrences.length > 4) {
+                    <button
+                      class="text-button"
+                      (click)="showAllDates.set(!showAllDates())"
+                    >
+                      {{
+                        showAllDates()
+                          ? t("Afficher moins de dates")
+                          : t("Voir les {count} dates", {
+                              count: o.occurrences.length,
+                            })
+                      }}
+                      <span aria-hidden="true">↓</span>
+                    </button>
+                  }
+                }
+              </section>
+              <section class="story-section info-section" id="tarifs">
+                <div class="section-title">
+                  <i-tabler name="ticket" />
+                  <h2>{{ t("Tarifs") }}</h2>
+                </div>
+                <div class="prices">
+                  @for (p of o.prices; track $index) {
+                    <div class="price-row">
+                      <div>
+                        <strong>{{ p.label }}</strong>
+                        @if (p.conditions) {
+                          <p>{{ p.conditions }}</p>
+                        }
+                      </div>
+                      <span [class.free]="p.type === 'free'">{{
+                        priceLabel(p)
+                      }}</span>
+                    </div>
+                  } @empty {
+                    <p class="muted">
+                      {{
+                        t(
+                          "Les tarifs restent à confirmer auprès de l’organisateur."
+                        )
+                      }}
+                    </p>
+                  }
+                </div>
+              </section>
+              <section class="story-section" id="pratique">
+                <div class="section-title">
+                  <i-tabler name="info-circle" />
+                  <h2>{{ t("Avant de partir") }}</h2>
+                </div>
+                <p class="prose">
+                  {{
+                    o.practicalInfo ||
+                      t(
+                        "Pensez à vérifier les conditions d’accès et les horaires auprès du lieu avant votre départ."
+                      )
+                  }}
+                </p>
+                @if (o.accessibility) {
+                  <h3>{{ t("Accessibilité") }}</h3>
+                  <p class="prose">{{ o.accessibility }}</p>
+                }
+                @if (termGroups().length) {
+                  <dl class="term-groups">
+                    @for (group of termGroups(); track group.property) {
+                      <div>
+                        <dt>{{ group.title }}</dt>
+                        <dd class="term-tags">
+                          @for (label of group.labels; track label) {
+                            <span>{{ label }}</span>
+                          }
+                        </dd>
+                      </div>
+                    }
+                  </dl>
+                }
+                @if (o.sourceDetails; as details) {
+                  @if (details.locations.length > 1) {
+                    <h3>{{ t("Les lieux de la sortie") }}</h3>
+                    <div class="detail-cards">
+                      @for (location of details.locations; track $index) {
+                        <div class="detail-card">
+                          @if (location.name) {
+                            <strong>{{ location.name }}</strong>
+                          }
+                          <p>
+                            {{ location.address }}<br />{{
+                              location.postalCode
+                            }}
+                            {{ location.city }}
+                          </p>
+                          @if (
+                            location.city ||
+                            location.address ||
+                            location.latitude !== null
+                          ) {
+                            <a
+                              [href]="locationMapUrl(location)"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              >{{ t("Voir sur la carte ↗") }}</a
+                            >
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                }
+              </section>
+              @if (visitorContacts().length) {
+                <section class="story-section extra-section" id="contacts">
+                  <div class="section-kicker">
+                    {{ t("UN RENSEIGNEMENT ?") }}
+                  </div>
+                  <h2>{{ t("Contacts") }}</h2>
+                  <div class="detail-cards">
+                    @for (contact of visitorContacts(); track $index) {
+                      <div class="detail-card">
+                        <p class="contact-role">
+                          {{ contactRole(contact.role) }}
+                        </p>
+                        @if (contact.name) {
+                          <h3>{{ contact.name }}</h3>
+                        }
+                        <ul class="contact-channels">
+                          @for (
+                            channel of contact.channels;
+                            track channel.kind + channel.value
+                          ) {
+                            <li>
+                              <span>{{ channelLabel(channel.kind) }}</span>
+                              @if (contactHref(channel); as href) {
+                                <a
+                                  [href]="href"
+                                  [attr.target]="
+                                    channel.kind === 'homepage'
+                                      ? '_blank'
+                                      : null
+                                  "
+                                  rel="noopener noreferrer"
+                                  >{{ channel.value
+                                  }}{{
+                                    channel.kind === "homepage" ? " ↗" : ""
+                                  }}</a
+                                >
+                              } @else {
+                                <span class="channel-value">{{
+                                  channel.value
+                                }}</span>
+                              }
+                            </li>
+                          }
+                        </ul>
+                      </div>
+                    }
+                  </div>
+                </section>
+              }
+              @if (documents().length) {
+                <section class="story-section extra-section" id="documents">
+                  <div class="section-kicker">
+                    {{ t("POUR EN SAVOIR PLUS") }}
+                  </div>
+                  <h2>{{ t("Documents & liens") }}</h2>
+                  <ul class="resource-list">
+                    @for (resource of documents(); track resource.url) {
+                      <li>
+                        <a
+                          [href]="safeUrl(resource.url)"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >{{ resourceLabel(resource.url) }} ↗</a
+                        >
+                        @if (resource.title && resource.title !== o.title) {
+                          <p>{{ resource.title }}</p>
+                        }
+                        @if (resource.credit || resource.license) {
+                          <p class="muted">
+                            {{ resource.credit
+                            }}{{
+                              resource.credit && resource.license ? " · " : ""
+                            }}{{ resource.license }}
+                          </p>
+                        }
+                      </li>
+                    }
+                  </ul>
+                </section>
+              }
+              @if (o.images.length > 1) {
+                <section class="story-section gallery-section">
+                  <div class="section-kicker">
+                    {{ t("UN APERÇU DE LA SORTIE") }}
+                  </div>
+                  <h2>{{ t("En images") }}</h2>
+                  <div class="gallery">
+                    @for (image of o.images.slice(1); track image.url) {
+                      <figure>
+                        <img
+                          [src]="image.url"
+                          [alt]="image.alt"
+                          loading="lazy"
+                          decoding="async"
+                          referrerpolicy="no-referrer"
+                        />
+                        @if (image.credit || image.license) {
+                          <figcaption>
+                            {{ image.credit
+                            }}{{ image.credit && image.license ? " · " : ""
+                            }}{{ image.license }}
+                          </figcaption>
+                        }
+                      </figure>
+                    }
+                  </div>
+                </section>
+              }
+              @if (o.sourceDetails; as details) {
+                <details class="source-details">
+                  <summary>{{ t("À propos de cette fiche") }}</summary>
+                  <dl>
+                    @if (sourceNames("creator"); as creator) {
+                      <div>
+                        <dt>{{ t("Informations fournies par") }}</dt>
+                        <dd>{{ creator }}</dd>
+                      </div>
+                    }
+                    @if (sourceNames("publisher"); as publisher) {
+                      <div>
+                        <dt>{{ t("Diffusées par") }}</dt>
+                        <dd>{{ publisher }}</dd>
+                      </div>
+                    }
+                    @if (
+                      sourceDate(details.updatedOn || details.updatedAt);
+                      as updated
+                    ) {
+                      <div>
+                        <dt>{{ t("Mise à jour de la source") }}</dt>
+                        <dd>{{ updated }}</dd>
+                      </div>
+                    }
+                    @if (sourceDate(details.createdOn); as created) {
+                      <div>
+                        <dt>{{ t("Fiche source créée le") }}</dt>
+                        <dd>{{ created }}</dd>
+                      </div>
+                    }
+                    @if (details.reference) {
+                      <div>
+                        <dt>{{ t("Référence chez la source") }}</dt>
+                        <dd>{{ details.reference }}</dd>
+                      </div>
+                    }
+                  </dl>
+                  @if (safeUrl(o.sourceUrl); as source) {
+                    <a
+                      [href]="source"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >{{ t("Consulter la fiche DATAtourisme ↗") }}</a
+                    >
+                  }
+                </details>
+              } @else if (safeUrl(o.sourceUrl); as source) {
+                <p class="source-note">
+                  {{ t("Pour les dernières informations :") }}
+                  <a [href]="source" target="_blank" rel="noopener noreferrer"
+                    >{{ o.sourceName || t("consulter la source") }} ↗</a
+                  >
+                </p>
+              }
+            </div>
+          </div>
+          <footer class="outing-footer">
+            <div>
+              <span>{{ t("ET POUR LA PROCHAINE FOIS ?") }}</span>
+              <h2>{{ t("L’Alsace a encore de belles idées.") }}</h2>
+            </div>
+            <a [routerLink]="i18n.path('/')" fragment="sorties"
+              >{{ t("Retour aux sorties") }} <i-tabler name="arrow-right"
+            /></a>
+          </footer>
+        </div>
+      </div>
+    </article>
+  }
+</main>

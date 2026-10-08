@@ -1,0 +1,13 @@
+.git
+.env
+**/.env
+**/.env.*
+**/node_modules
+**/target
+**/dist
+**/.angular
+**/__pycache__
+**/.venv
+**/*.log
+backups
+.datatourisme-build

@@ -1,0 +1,31 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8087}
+spring:
+  application:
+    name: idee-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:idee}
+    username: ${DB_USER:htpweb}
+    password: ${DB_PASSWORD}
+  liquibase:
+    contexts: ${DB_CONTEXTS:production}
+    change-log: classpath:db/changelog/master.yaml
+  jackson:
+    time-zone: Europe/Paris
+
+idee:
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    translation-model: ${OPENAI_TRANSLATION_MODEL:gpt-4.1-mini-2025-04-14}
+    translations-enabled: ${OPENAI_TRANSLATIONS_ENABLED:true}
+  mistral:
+    api-key: ${MISTRAL_API_KEY:}
+    model: ${MISTRAL_MODEL:mistral-small-2603}
+    auto-enabled: ${MISTRAL_AUTO_ENABLED:true}
+  import-token: ${IDEE_IMPORT_TOKEN:}
+  calendar-python: ${IDEE_CALENDAR_PYTHON:python3}
+  calendar-script: ${IDEE_CALENDAR_SCRIPT:scripts/expand_calendar_json.py}
+  datatourisme:
+    api-key: ${DATATOURISME_API_KEY:}
+    enabled: ${DATATOURISME_ENABLED:false}

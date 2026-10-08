@@ -1,0 +1,43 @@
+{
+  "sourceName": "votre-source",
+  "externalId": "identifiant-stable-2027",
+  "sourceUrl": "https://votre-source.fr/evenement",
+  "slug": "nom-de-votre-sortie",
+  "title": "Nom de votre sortie",
+  "summary": "Résumé vérifié de la sortie.",
+  "description": "Description issue de la source officielle.",
+  "kind": "event",
+  "status": "draft",
+  "place": {
+    "name": "Nom du lieu",
+    "city": "Strasbourg",
+    "department": "67"
+  },
+  "categorySlugs": [
+    "culture"
+  ],
+  "schedules": [
+    {
+      "label": "Premier samedi de chaque mois",
+      "startsLocal": "2027-01-02T10:00:00",
+      "endsLocal": "2027-01-02T18:00:00",
+      "timezone": "Europe/Paris",
+      "rrule": "FREQ=MONTHLY;BYDAY=1SA"
+    }
+  ],
+  "prices": [
+    {
+      "label": "Tarif non communiqué",
+      "type": "unknown"
+    }
+  ],
+  "images": [
+    {
+      "url": "https://votre-source.fr/images/evenement.jpg",
+      "alt": "Affiche officielle de la sortie",
+      "credit": "Nom du photographe ou de l’organisateur",
+      "license": "Facultatif",
+      "primary": true
+    }
+  ]
+}

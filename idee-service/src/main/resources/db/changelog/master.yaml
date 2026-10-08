@@ -1,0 +1,119 @@
+databaseChangeLog:
+  - changeSet:
+      id: idee-001
+      author: idee
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-002-demo
+      author: idee
+      context: demo
+      changes:
+        - sqlFile:
+            path: 002-demo.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-003-integrity
+      author: idee
+      changes:
+        - sqlFile:
+            path: 003-integrity.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-004-import
+      author: idee
+      changes:
+        - sqlFile:
+            path: 004-import.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-005-media
+      author: idee
+      changes:
+        - sqlFile:
+            path: 005-media.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-006-media-url
+      author: idee
+      changes:
+        - sqlFile:
+            path: 006-media-url.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-007-datatourisme
+      author: idee
+      changes:
+        - sqlFile:
+            path: 007-datatourisme.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-008-datatourisme-time-precision
+      author: idee
+      changes:
+        - sqlFile:
+            path: 008-datatourisme-time-precision.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-009-datatourisme-details
+      author: idee
+      changes:
+        - sqlFile:
+            path: 009-datatourisme-details.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-010-datatourisme-sync
+      author: idee
+      changes:
+        - sqlFile:
+            path: 010-datatourisme-sync.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-011-outing-descriptions
+      author: idee
+      changes:
+        - sqlFile:
+            path: 011-outing-descriptions.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: idee-012-public-urls
+      author: idee
+      changes:
+        - sqlFile:
+            path: 012-public-urls.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-013-description-jobs
+      author: idee
+      changes:
+        - sqlFile:
+            path: 013-description-jobs.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-014-description-batches
+      author: idee
+      changes:
+        - sqlFile:
+            path: 014-description-batches.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-015-translations
+      author: idee
+      changes:
+        - sqlFile:
+            path: 015-translations.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-016-translated-urls
+      author: idee
+      changes:
+        - sqlFile:
+            path: 016-translated-urls.sql
+            relativeToChangelogFile: true
+            splitStatements: false

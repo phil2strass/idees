@@ -1,0 +1,94 @@
+body {
+
+    // Add Product
+
+    .NgxEditor__Wrapper {
+        border: 1px solid var(--mat-sys-outline-variant);
+    }
+
+    .NgxEditor__Seperator {
+        border-left: 1px solid var(--mat-sys-outline-variant);
+    }
+
+    .NgxEditor__MenuBar {
+        background-color: var(--mat-card-elevated-container-color);
+        border-bottom: 1px solid var(--mat-sys-outline-variant) !important;
+    }
+
+    .NgxEditor {
+        background: var(--mat-card-elevated-container-color);
+        color: var(--mat-sys-on-background);
+    }
+
+    .NgxEditor__MenuItem .NgxEditor__MenuItem--Icon:hover {
+        background-color: var(--mat-sys-primary);
+        color: var(--mat-sys-background);
+    }
+
+    .NgxEditor__Dropdown:hover {
+        background-color: var(--mat-sys-primary);
+
+        .NgxEditor__Dropdown--Text {
+            color: var(--mat-sys-background);
+        }
+    }
+
+    .NgxEditor__Dropdown .NgxEditor__Dropdown--Selected,
+    .NgxEditor__Dropdown .NgxEditor__Dropdown--Open {
+        color: var(--mat-sys-background);
+        background-color: var(--mat-sys-primary);
+    }
+
+    .NgxEditor__Dropdown .NgxEditor__Dropdown--Item:hover {
+        background-color: var(--mat-sys-primary-fixed-dim);
+        color: var(--mat-sys-primary);
+    }
+
+    .NgxEditor__Dropdown .NgxEditor__Dropdown--DropdownMenu {
+        background-color: var(--mat-card-elevated-container-color);
+    }
+
+
+    .dropzone-box {
+        border: 1px dashed var(--mat-sys-primary);
+        background-color: var(--mat-sys-primary-fixed-dim);
+
+        .dropzone-content {
+            .preview-image {
+                width: 100px;
+                height: 70px;
+                object-fit: cover;
+                border-radius: 6px;
+                margin-bottom: 0.5rem;
+            }
+        }
+
+        .headline {
+            margin: 0;
+        }
+    }
+
+    .cards-circle {
+        width: 15px;
+        height: 15px;
+        border-radius: var(--mat-sys-corner-full);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--mat-sys-primary);
+
+        .theme-icon {
+            display: none;
+        }
+
+        &.selected {
+            .theme-icon {
+                display: block;
+                color: white;
+                width: 18px;
+                height: 25px;
+            }
+        }
+    }
+
+}

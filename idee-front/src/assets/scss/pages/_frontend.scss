@@ -1,0 +1,143 @@
+.front-topbar {
+    &.fixed-topbar {
+        position: fixed;
+        top: 0;
+        width: 100%;
+        background-color: var(--mat-sys-background) !important;
+        z-index: 9;
+    }
+}
+
+.back-to-top {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 999;
+    transition: opacity 0.3s ease;
+}
+
+.tab-header {
+
+    .profileTabs {
+
+        .mat-mdc-tab {
+            padding: 30px 16px;
+            height: auto;
+            border-right: 1px solid var(--mat-sys-outline);
+
+            &:last-child {
+                border-right: 0;
+            }
+        }
+
+        .mat-mdc-tab-label-container {
+            border-top-width: 0;
+        }
+    }
+
+}
+
+.home-page .expansion-panel .mat-expansion-panel-body {
+    padding: 16px 0;
+}
+
+.faq-accordion {
+    .mat-expansion-panel-body {
+        padding: 16px 24px !important;
+    }
+}
+
+.mobile-sidebar {
+    .mdc-list {
+        .mdc-list-item {
+            .mat-mdc-button {
+                color: var(--mat-sys-on-background);
+                min-width: 100%;
+                justify-content: flex-start;
+
+                &.selected {
+                    background-color: var(--mat-sys-primary-fixed-dim);
+                    color: var(--mat-sys-primary);
+                    transition: background-color 0.3s ease;
+                }
+            }
+        }
+    }
+}
+
+
+.spacing-top-bottom {
+    padding: 80px 0;
+}
+
+.spacing-left-right {
+    padding: 0 80px;
+}
+
+.spacing-left {
+    padding-left: 80px;
+}
+
+.spacing-top {
+    padding-top: 80px;
+}
+
+.spacing-bottom {
+    padding-bottom: 80px;
+}
+
+@media (max-width: 959px) {
+    .section-sub-title {
+        font-size: 30px !important;
+    }
+
+    .spacing-top-bottom {
+        padding: 60px 0;
+    }
+
+    .spacing-left-right {
+        padding: 0 60px;
+    }
+
+    .spacing-left {
+        padding-left: 60px;
+    }
+
+    .spacing-top {
+        padding-top: 60px;
+    }
+
+    .spacing-bottom {
+        padding-bottom: 60px;
+    }
+}
+
+@media (max-width: 767px) {
+    .section-sub-title {
+        font-size: 24px !important;
+    }
+
+    .spacing-top-bottom {
+        padding: 30px 0;
+    }
+
+    .spacing-left-right {
+        padding: 0 30px;
+    }
+
+    .spacing-left {
+        padding-left: 30px;
+    }
+
+    .spacing-top {
+        padding-top: 30px;
+    }
+
+    .spacing-bottom {
+        padding-bottom: 30px;
+    }
+
+    .footer-content .left-side-content {
+        padding: 30px !important;
+    }
+} 

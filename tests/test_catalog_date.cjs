@@ -1,0 +1,64 @@
+const assert = require('node:assert/strict');
+const { chromium } = require(process.env.IDEE_PLAYWRIGHT_MODULE || 'playwright');
+const base = process.env.IDEE_BROWSER_URL || 'http://127.0.0.1:4401';
+(async () => {
+  const browser = await chromium.launch({headless:true, ...(process.env.IDEE_CHROMIUM_PATH ? {executablePath:process.env.IDEE_CHROMIUM_PATH} : {})});
+  try {
+    const page = await browser.newPage({viewport:{width:1440,height:1000}});
+    page.setDefaultTimeout(60000);
+    const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+    const date='2026-09-26';
+    const response=await page.request.get(base+'/api/catalog?period=date&date='+date);
+    assert.equal(response.status(),200);
+    const data=await response.json(); assert(data.total>40);
+    const legacy=await (await page.request.get(base+'/api/outings?date='+date+'&limit=40')).json();
+    assert.deepEqual(data.items.map(o=>o.id),legacy.map(o=>o.id));
+    assert(data.items.every(o=>o.occurrences.length && o.occurrences.every(x=>x.status!=='cancelled' && Date.parse(x.startsAt)<Date.parse('2026-09-27T00:00:00+02:00') && Date.parse(x.endsAt)>Date.parse('2026-09-26T00:00:00+02:00'))));
+    for(const query of ['period=date','period=date&date=2026-02-30','period=date&date=2201-01-01']) {
+      assert.equal((await page.request.get(base+'/api/catalog?'+query)).status(),400);
+    }
+    await page.goto(base,{waitUntil:'domcontentloaded'});
+    const button=page.getByRole('button',{name:/^Calendrier :/});
+    await button.click();
+    const calendar=page.locator('mat-calendar');
+    await calendar.waitFor();
+    assert.equal(await calendar.locator('th').first().innerText(),'lundi\nL');
+    await page.getByRole('button',{name:'Mois suivant',exact:true}).click();
+    await page.getByRole('button',{name:'Mois précédent',exact:true}).click();
+    await page.getByRole('button',{name:'26 septembre 2026',exact:true}).click();
+    await calendar.waitFor({state:'hidden'});
+    await page.waitForFunction(total=>document.querySelector('.results-count')?.textContent.includes('40 sorties affichées sur '+total),data.total);
+    assert.equal(await page.getByRole('button',{name:'Aujourd’hui',exact:true}).getAttribute('aria-pressed'),'false');
+    assert((await page.locator('#results-title').innerText()).includes('26 sept. 2026'));
+    const next=page.waitForRequest(r=>r.url().includes('/api/catalog?') && new URL(r.url()).searchParams.get('offset')==='40');
+    await page.locator('.load-more').scrollIntoViewIfNeeded();
+    assert.equal(new URL((await next).url()).searchParams.get('date'),date);
+    await page.waitForFunction(()=>document.querySelectorAll('.outing-card').length===80);
+    await page.locator('.outing-card .title-button').first().click();
+    await page.waitForURL('**/sorties/**');
+    await page.goBack({waitUntil:'domcontentloaded'}); await button.waitFor();
+    assert((await button.innerText()).includes('26 sept. 2026'));
+    await button.click();
+    await page.getByRole('button',{name:'26 septembre 2026',exact:true}).waitFor();
+    await page.locator('mat-calendar .mat-calendar-body-cell:focus').waitFor();
+    await page.waitForFunction(()=>!document.querySelector('.mat-datepicker-content-animating'));
+    await page.keyboard.press('Escape');
+    await calendar.waitFor({state:'hidden'});
+    assert(await button.evaluate(el=>el===document.activeElement));
+    await page.getByRole('button',{name:'Aujourd’hui',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.calendar-button')?.textContent.trim()==='Calendrier');
+    await page.waitForFunction(()=>document.querySelector('.period-chips button')?.getAttribute('aria-pressed')==='true');
+    await page.setViewportSize({width:390,height:844});
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+    await calendar.waitFor();
+    await page.locator('mat-calendar .mat-calendar-body-cell:focus').waitFor();
+    await page.waitForFunction(()=>!document.querySelector('.mat-datepicker-content-animating'));
+    const bounds=await calendar.boundingBox();
+    assert(bounds.x>=0 && bounds.x+bounds.width<=390);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.screenshot({path:'/tmp/idee-catalog-date-mobile.png'});
+    assert.deepEqual(errors,[]);
+    console.log('OK: exact-day API, invalid dates, Material popup, French/Monday, month navigation, date retained across pages and detail return, Escape/focus, presets, mobile.');
+  } finally {await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

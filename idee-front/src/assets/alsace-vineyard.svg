@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" fill="none">
+<defs><clipPath id="land"><rect width="760" height="400" rx="22"/></clipPath><clipPath id="left"><path d="M0 241Q145 184 320 289L469 400H0Z"/></clipPath><clipPath id="right"><path d="M760 202Q590 205 476 287L386 400H760Z"/></clipPath></defs>
+<g clip-path="url(#land)"><path fill="#f8faf7" d="M0 0h760v400H0z"/>
+<circle cx="615" cy="80" r="37" fill="#e8ecdf"/>
+<path d="M50 79h92m-62-9h81m335-20h78" stroke="white" stroke-width="9" stroke-linecap="round"/>
+<path d="M0 195 110 131l74 18 105-76 85 83 99-40 125 59 80-37 82 46v216H0Z" fill="#e1e8dc"/>
+<path d="M0 224q120-91 268-46t259 27 233-37v232H0Z" fill="#bdcbb0"/>
+<path d="M0 278q123-62 258-37t253-13 249 4v168H0Z" fill="#91a47f"/>
+<!-- A village nestled between the Vosges foothills and the vines. -->
+<g stroke="#40513f" stroke-width="2.5" stroke-linejoin="round">
+<path d="M350 244v-88h25v88" fill="#fff"/><path d="m345 157 18-54 17 54Z" fill="#64715c"/><path d="M362 104V92m-5 5h10" stroke-width="2"/><path d="M337 244v-45h56v45" fill="#f9fbf6"/><path d="m330 201 34-30 36 30Z" fill="#7b896e"/><path d="M359 169v10m10-10v10"/>
+<path d="M292 252v-46h47v46" fill="#fff"/><path d="m286 207 28-30 32 30Z" fill="#b75343"/>
+<path d="M393 247v-54h61v54" fill="#fff"/><path d="m386 194 36-42 40 42Z" fill="#b75343"/><path d="M402 193 423 167l23 26M423 168v77m-27-26h56m-47-24v48m34-47v47m-41-22 23 25m5-25 21 24"/>
+<path d="M465 246v-39h45v39" fill="#f8faf6"/><path d="m459 207 27-29 30 29Z" fill="#b75343"/>
+<path d="M306 221h8v13h-8zm119-16h8v11h-8zm53 17h8v12h-8z" fill="#40513f" stroke="none"/>
+<path d="M350 244v-13a9 9 0 0 1 18 0v13" fill="#718362"/>
+</g>
+<g fill="#647d52"><circle cx="278" cy="240" r="12"/><circle cx="265" cy="246" r="9"/><circle cx="522" cy="242" r="14"/><circle cx="542" cy="247" r="10"/></g>
+<!-- Curving vine rows open towards the village. -->
+<path d="M0 241Q145 184 320 289L469 400H0Z" fill="#d5dfc8"/>
+<g clip-path="url(#left)" stroke="#69834f" stroke-width="14">
+<path d="M-100 271Q70 153 315 285M-92 317Q88 164 340 305M-61 365Q99 184 364 327M-24 422Q122 205 390 351M40 444Q158 240 416 375M121 470Q194 281 443 399M210 486Q247 331 470 426"/>
+</g>
+<path d="M760 202Q590 205 476 287L386 400H760Z" fill="#e3e8d8"/>
+<g clip-path="url(#right)" stroke="#7a925e" stroke-width="16">
+<path d="M490 277q130-98 325-59M465 296q170-79 350-35M443 321q159-58 369-14M421 346q161-35 401 9M399 374q204-10 438 34M383 402q200 9 435 57"/>
+</g>
+<path d="M421 262q-14 44-55 77t-38 61h49q4-32 37-66t17-72Z" fill="#f7f8ef"/>
+<g stroke="#526949" stroke-width="2" stroke-linecap="round"><path d="m80 327-5 17m68-54-5 14m67-32-4 12m343 38 3 16m62-24 4 19m71-22 4 21m-481 32-6 21m-59 21-7 25"/></g>
+<path d="m94 111 8-4 8 4m4-16 8-4 8 4" stroke="#526949" stroke-width="2" stroke-linecap="round"/>
+</g></svg>

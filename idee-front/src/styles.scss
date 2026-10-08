@@ -1,0 +1,93 @@
+@use '@angular/material' as mat;
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(assets/fonts/dm-sans-400.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(assets/fonts/dm-sans-500.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(assets/fonts/dm-sans-600.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(assets/fonts/dm-sans-700.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(assets/fonts/fraunces-500.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(assets/fonts/fraunces-600.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(assets/fonts/fraunces-700.ttf) format('truetype');
+}
+
+:root { color-scheme: light; --ink: #23302b; --red: #a63d32; --green: #526b4a; --cream: #f7f3ea; --line: #ded8ca; }
+html { min-height: 100%; scroll-behavior: smooth; }
+body { margin: 0; min-height: 100%; background: var(--cream); color: var(--ink); font-family: 'DM Sans', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+idee-root { display: block; min-height: 100vh; }
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+::selection { color: var(--ink); background: #e4ebda; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+// The overlay lives outside the catalogue component; keep its theme scoped.
+.mat-datepicker-content:has(.idee-calendar-popup) {
+  @include mat.theme((color: mat.$green-palette, typography: 'DM Sans', density: 0));
+  @include mat.datepicker-overrides((
+    calendar-container-background-color: #fffdf8,
+    calendar-container-text-color: #23302b,
+    calendar-container-shape: 24px,
+    calendar-container-elevation-shadow: 0 16px 48px #23302b26,
+    calendar-date-selected-state-background-color: #526b4a,
+    calendar-date-selected-state-text-color: #fff,
+    calendar-date-today-outline-color: #a63d32,
+    calendar-date-today-selected-state-outline-color: #fff,
+    calendar-date-hover-state-background-color: #e8efdf,
+    calendar-date-focus-state-background-color: #dce7d2,
+    calendar-header-text-color: #74816d,
+    calendar-body-label-text-color: #74816d,
+    calendar-period-button-text-color: #23302b,
+    calendar-navigation-button-icon-color: #526b4a,
+    calendar-text-font: 'DM Sans',
+    calendar-text-size: 14px,
+    calendar-period-button-text-size: 16px,
+    calendar-period-button-text-weight: 700,
+  ));
+  border: 1px solid #ded8ca;
+  overflow: hidden;
+  .mat-calendar { width: min(320px, calc(100vw - 40px)); height: auto; }
+  .mat-calendar-header { padding: 12px 12px 0; }
+  .mat-calendar-controls { margin: 8px 0 18px; }
+  .mat-calendar-content { padding: 0 14px 14px; }
+  .mat-calendar-body-selected { box-shadow: 0 3px 8px #526b4a33; }
+}

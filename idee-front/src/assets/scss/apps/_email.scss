@@ -1,0 +1,52 @@
+@use "../variables" as *;
+
+.ngx-pagination {
+  margin-bottom: 15px !important;
+
+  .current {
+    background: var(--mat-sys-primary) !important;
+    border-radius: $border-radius;
+  }
+
+  a {
+    border-radius: $border-radius !important;
+  }
+
+  button {
+    border-radius: $border-radius !important;
+  }
+}
+
+html .mail-sidebar {
+  width: 240px;
+}
+
+.email-box {
+  @media (max-width: 991px) {
+    .detail-part {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1279px) {
+    .detail-part.movetodetail {
+      display: block;
+      position: absolute;
+      z-index: 9;
+      left: 0;
+      background: $white;
+    }
+
+  }
+}
+
+// invoice app
+
+.add-invoice-list,
+.edit-invoice-list {
+  .table {
+    .mat-mdc-form-field-infix {
+      width: auto;
+    }
+  }
+}

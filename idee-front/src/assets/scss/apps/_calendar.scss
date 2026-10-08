@@ -1,0 +1,85 @@
+@use "../variables" as *;
+
+.cal-event-action {
+  text-decoration: none;
+  margin-left: 5px;
+  color: $white;
+}
+
+.cal-month-view {
+  background-color: transparent !important;
+
+  .cal-open-day-events {
+    background-color: $dark-body-bg !important;
+  }
+
+  .cal-day-badge {
+    background-color: var(--mat-sys-primary) !important;
+  }
+
+  .cal-day-cell.cal-weekend .cal-day-number {
+    color: var(--mat-sys-primary) !important;
+  }
+
+  .cal-cell {
+    font-size: 14px;
+    font-weight: 500;
+  }
+}
+
+.add-event-date .mat-mdc-icon-button {
+  width: 35px !important;
+  height: 35px !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html {
+
+  .cal-week-view,
+  .cal-week-view .cal-hour-odd {
+    background-color: var(--mat-sys-surface);
+  }
+
+  .cal-month-view .cal-cell-row:hover,
+  .cal-month-view .cal-cell-row .cal-cell:hover,
+  .cal-month-view .cal-cell.cal-has-events.cal-open,
+  .cal-week-view .cal-time-events .cal-day-columns:not(.cal-resize-active) .cal-hour-segment:hover,
+  .cal-week-view .cal-day-headers .cal-header:hover,
+  .cal-week-view .cal-day-headers .cal-drag-over {
+    background-color: var(--mat-option-focus-state-layer-color);
+  }
+
+  .cal-month-view .cal-day-cell:not(:last-child) {
+    border-right-color: var(--mat-sys-outline);
+  }
+
+  .cal-month-view .cal-days .cal-cell-row,
+  .cal-week-view .cal-hour:not(:last-child) .cal-hour-segment,
+  .cal-week-view .cal-hour:last-child :not(:last-child) .cal-hour-segment {
+    border-bottom-color: var(--mat-sys-outline);
+  }
+
+  .cal-month-view .cal-days,
+  .cal-week-view,
+  .cal-week-view .cal-day-headers,
+  .cal-week-view .cal-time-events,
+  .cal-week-view .cal-day-column,
+  .cal-week-view .cal-day-headers .cal-header:first-child,
+  .cal-week-view .cal-day-headers .cal-header:not(:last-child) {
+    border-color: var(--mat-sys-outline);
+  }
+}
+
+//
+// ticket app
+//
+.max-text {
+  max-width: 250px;
+  line-height: 1.57;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

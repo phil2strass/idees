@@ -1,0 +1,457 @@
+<main id="content" tabindex="-1">
+  <section class="hero" aria-labelledby="welcome-title">
+    <div class="hero-copy">
+      <div class="eyebrow">{{ t("L’Alsace au fil des envies") }}</div>
+      <h1 id="welcome-title">
+        {{ t("Il y a toujours une") }} <em>{{ t("Alsace") }}</em>
+        {{ t("à découvrir.") }}
+      </h1>
+      <p class="lead">
+        {{
+          t(
+            "Balades, villages et rendez-vous locaux : trouvez votre prochaine sortie."
+          )
+        }}
+      </p>
+      <form class="search" role="search" (ngSubmit)="explore()">
+        <input
+          type="search"
+          name="query"
+          [attr.aria-label]="t('Rechercher une sortie ou une ville')"
+          [placeholder]="t('Une ville, une envie, une sortie…')"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+        />
+        <button type="submit">
+          {{ t("Explorer") }} <span aria-hidden="true">→</span>
+        </button>
+      </form>
+      <div class="quick">
+        <span>{{ t("À découvrir :") }}</span>
+        <a href="#sorties" (click)="reset(); period.set('weekend')">{{
+          t("Ce week-end")
+        }}</a>
+        <a href="#sorties" (click)="reset(); chooseCategory('famille')">{{
+          t("En famille")
+        }}</a>
+        <a href="#sorties" (click)="reset(); chooseCategory('nature')">{{
+          t("Nature & balades")
+        }}</a>
+      </div>
+    </div>
+    <figure class="vineyard-photo">
+      <img
+        src="assets/riquewihr-vignoble.webp"
+        [alt]="t('Riquewihr et ses maisons alsaciennes au milieu des vignes')"
+        width="1000"
+        height="750"
+        fetchpriority="high"
+      />
+      <figcaption>
+        Riquewihr ·
+        <a
+          href="https://commons.wikimedia.org/wiki/File:View_on_Riquewihr.jpg"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Yzen2023</a
+        >
+        ·
+        <a
+          href="https://creativecommons.org/licenses/by/4.0/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >CC BY 4.0</a
+        >
+        {{ t("· recadrée") }}
+      </figcaption>
+    </figure>
+  </section>
+  <section
+    class="outings-section"
+    id="sorties"
+    #results
+    tabindex="-1"
+    aria-labelledby="results-title"
+  >
+    <div class="inner">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">
+            {{ t("Près de chez vous, ou un peu plus loin") }}
+          </div>
+          <h2 id="results-title">
+            {{
+              period() === "date"
+                ? t("Sorties du ") + chosenDateLabel()
+                : category()
+                  ? t("Selon vos envies")
+                  : period() === "weekend"
+                    ? t("Ce week-end en Alsace")
+                    : period() === "today"
+                      ? t("Aujourd’hui en Alsace")
+                      : t("À faire bientôt")
+            }}
+          </h2>
+        </div>
+        <button class="text-link" (click)="reset()">
+          {{ t("Toutes les idées de sorties") }}
+          <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+      <div
+        class="category-chips"
+        [attr.aria-label]="t('Catégories de sorties')"
+      >
+        <button
+          [class.selected]="!category()"
+          [attr.aria-pressed]="!category()"
+          (click)="category.set('')"
+        >
+          {{ t("Tout explorer") }}
+        </button>
+        @for (c of categories(); track c.slug) {
+          <button
+            [class.selected]="category() === c.slug"
+            [attr.aria-pressed]="category() === c.slug"
+            (click)="category.set(c.slug)"
+          >
+            <i-tabler [name]="c.icon" />{{ t(c.name) }}
+          </button>
+        }
+      </div>
+      <div
+        class="category-chips period-chips"
+        role="group"
+        [attr.aria-label]="t('Période des sorties')"
+      >
+        <button
+          [class.selected]="period() === 'today'"
+          [attr.aria-pressed]="period() === 'today'"
+          (click)="period.set('today')"
+        >
+          {{ t("Aujourd’hui") }}
+        </button>
+        <button
+          [class.selected]="period() === 'weekend'"
+          [attr.aria-pressed]="period() === 'weekend'"
+          (click)="period.set('weekend')"
+        >
+          {{ t("Ce week-end") }}
+        </button>
+        <button
+          [class.selected]="period() === weekPeriod"
+          [attr.aria-pressed]="period() === weekPeriod"
+          (click)="period.set(weekPeriod)"
+        >
+          {{ t(weekLabel) }}
+        </button>
+        <button
+          [class.selected]="period() === ''"
+          [attr.aria-pressed]="period() === ''"
+          (click)="period.set('')"
+        >
+          {{ t("Toutes les dates") }}
+        </button>
+        <div class="calendar-control">
+          <button
+            #calendarButton
+            type="button"
+            class="calendar-button"
+            [class.selected]="period() === 'date'"
+            aria-haspopup="dialog"
+            [attr.aria-expanded]="calendar.opened"
+            [attr.aria-label]="
+              period() === 'date'
+                ? t('Calendrier : ') + chosenDateLabel()
+                : t('Calendrier : choisir une date')
+            "
+            (click)="calendar.open()"
+          >
+            <i-tabler name="calendar-event" aria-hidden="true" />
+            <span>{{
+              period() === "date" ? chosenDateLabel() : t("Calendrier")
+            }}</span>
+            <i-tabler
+              class="calendar-chevron"
+              name="chevron-right"
+              aria-hidden="true"
+            />
+          </button>
+          <input
+            class="calendar-anchor"
+            [matDatepicker]="calendar"
+            [value]="calendarDate()"
+            [min]="minDate"
+            [max]="maxDate"
+            (dateChange)="chooseCalendarDate($event.value)"
+            readonly
+            tabindex="-1"
+            aria-hidden="true"
+          />
+          <mat-datepicker
+            #calendar
+            panelClass="idee-calendar-popup"
+            [restoreFocus]="false"
+            (closed)="calendarButton.focus()"
+          />
+        </div>
+      </div>
+      <section
+        class="filter-fields location-filters"
+        [attr.aria-label]="t('Choisir un département et une ville')"
+      >
+        <label>
+          <span><i-tabler name="map-pin" /> {{ t("Département") }}</span>
+          <select
+            [attr.aria-label]="t('Département')"
+            [ngModel]="department()"
+            (ngModelChange)="chooseDepartment($event)"
+          >
+            <option value="">{{ t("Toute l’Alsace") }}</option>
+            <option value="67">Bas-Rhin (67)</option>
+            <option value="68">Haut-Rhin (68)</option>
+          </select>
+        </label>
+        <label>
+          <span><i-tabler name="map-pin" /> {{ t("Grande ville") }}</span>
+          <select
+            [attr.aria-label]="t('Grande ville')"
+            [ngModel]="city()"
+            (ngModelChange)="city.set($event)"
+            aria-describedby="city-help"
+          >
+            <option value="">{{ t("Toutes les villes") }}</option>
+            @for (c of cities(); track c.name) {
+              <option [value]="c.name">{{ t(c.name) }}</option>
+            }
+          </select>
+        </label>
+        <p id="city-help">
+          {{
+            t("Les 10 villes les plus peuplées de {region}.", {
+              region:
+                department() === "67"
+                  ? "Bas-Rhin"
+                  : department() === "68"
+                    ? "Haut-Rhin"
+                    : t("Alsace"),
+            })
+          }}
+        </p>
+      </section>
+      <details class="advanced-filters">
+        <summary>
+          <i-tabler name="adjustments-horizontal" />{{
+            t("Affiner la recherche")
+          }}<span>{{
+            period() || freeOnly()
+              ? t("Filtres actifs")
+              : t("Date, envie, gratuité")
+          }}</span>
+        </summary>
+        <section
+          class="filter-fields"
+          [attr.aria-label]="t('Filtrer les sorties')"
+        >
+          <label
+            ><span><i-tabler name="calendar-event" /> {{ t("Quand ?") }}</span
+            ><select [ngModel]="period()" (ngModelChange)="period.set($event)">
+              <option value="">{{ t("Toutes les dates") }}</option>
+              <option value="today">{{ t("Aujourd’hui") }}</option>
+              @if (period() === "date") {
+                <option value="date">{{ chosenDateLabel() }}</option>
+              }
+              <option value="weekend">{{ t("Ce week-end") }}</option>
+              <option [value]="weekPeriod">{{ t(weekLabel) }}</option>
+              <option value="month">{{ t("Ce mois-ci") }}</option>
+              <option value="permanent">{{ t("Sans date imposée") }}</option>
+            </select></label
+          >
+          <label
+            ><span><i-tabler name="compass" /> {{ t("Quelle envie ?") }}</span
+            ><select
+              [ngModel]="category()"
+              (ngModelChange)="category.set($event)"
+            >
+              <option value="">{{ t("Toutes les envies") }}</option>
+              @for (c of categories(); track c.slug) {
+                <option [value]="c.slug">{{ t(c.name) }}</option>
+              }
+            </select></label
+          >
+          <label class="free-filter"
+            ><input
+              type="checkbox"
+              [ngModel]="freeOnly()"
+              (ngModelChange)="freeOnly.set($event)"
+            />
+            {{ t("Sorties gratuites") }}</label
+          >
+        </section>
+      </details>
+      <p class="results-count" role="status">
+        {{
+          loading()
+            ? t("Chargement…")
+            : error()
+              ? t("Chargement indisponible")
+              : t("{shown} sorties affichées sur {total}", {
+                  shown: outings().length,
+                  total: total(),
+                })
+        }}
+      </p>
+      @if (demo()) {
+        <p class="demo-note">
+          <i-tabler name="info-circle" />{{
+            t(
+              "Aperçu du site : les sorties, dates et tarifs marqués « Démonstration » sont des exemples fictifs."
+            )
+          }}
+        </p>
+      }
+      @if (period() && period() !== "permanent") {
+        <p class="calendar-note">
+          {{
+            t(
+              "Les sorties sans date imposée sont disponibles dans « Explorer l’Alsace »."
+            )
+          }}
+        </p>
+      }
+      @if (loading()) {
+        <div class="state" role="status">
+          {{ t("Nous préparons vos idées de sorties…") }}
+        </div>
+      } @else if (error()) {
+        <div class="state" role="alert">
+          <h3>
+            {{ t("Les sorties ne sont pas disponibles pour le moment.") }}
+          </h3>
+          <p>{{ t("Veuillez réessayer dans quelques instants.") }}</p>
+          <button class="primary" (click)="load()">{{ t("Réessayer") }}</button>
+        </div>
+      } @else if (!filtered().length) {
+        <div class="state">
+          <i-tabler name="search" />
+          <h3>{{ t("Aucune sortie pour ces critères") }}</h3>
+          <p>
+            {{ t("Essayez une autre période ou élargissez votre recherche.") }}
+          </p>
+          <button class="primary" (click)="reset()">
+            {{ t("Voir toutes les idées") }}
+          </button>
+        </div>
+      } @else {
+        <div class="cards">
+          @for (o of filtered(); track o.id) {
+            <article class="outing-card">
+              <div class="art">
+                <a
+                  class="card-image"
+                  [routerLink]="outingUrl(o)"
+                  [attr.aria-label]="t('Découvrir ') + o.title"
+                >
+                  @if (o.images[0]; as image) {
+                    <img
+                      [src]="image.url"
+                      [alt]="image.alt"
+                      loading="lazy"
+                      decoding="async"
+                      referrerpolicy="no-referrer"
+                    />
+                  } @else {
+                    <img
+                      [src]="illustration(o)"
+                      alt=""
+                      width="400"
+                      height="230"
+                      loading="lazy"
+                    />
+                  }
+                </a>
+                @if (o.kind !== "permanent") {
+                  @if (next(o); as occurrence) {
+                    <div
+                      class="date"
+                      [attr.aria-label]="
+                        formatDate(occurrence.startsAt, occurrence.timezone)
+                      "
+                    >
+                      {{ datePart(occurrence, "day")
+                      }}<small>{{ datePart(occurrence, "month") }}</small>
+                    </div>
+                  }
+                } @else {
+                  <div class="date permanent">
+                    <i-tabler name="sun" /><small>{{
+                      t("À VOTRE RYTHME")
+                    }}</small>
+                  </div>
+                }
+              </div>
+              <div class="card-body">
+                <div class="tag">
+                  {{ t(o.categories[0]?.name || "À découvrir") }}
+                </div>
+                <h3>
+                  <a
+                    class="title-button"
+                    [routerLink]="outingUrl(o)"
+                    [attr.lang]="o.contentLanguage"
+                    >{{ o.title }}</a
+                  >
+                </h3>
+                <div class="location">
+                  <i-tabler name="map-pin" />{{ o.city }} · {{ o.department }}
+                </div>
+                <p class="summary" [attr.lang]="o.contentLanguage">
+                  {{ o.description_courte || o.summary }}
+                </p>
+                <div class="schedule">
+                  <i-tabler
+                    [name]="o.kind === 'permanent' ? 'sun' : 'calendar-event'"
+                  /><span>{{ dateLabel(o) }}</span>
+                </div>
+                @if (o.isDemo) {
+                  <span class="demo-label">{{ t("Démonstration") }}</span>
+                }
+                <footer>
+                  <span>{{ price(o) }}</span
+                  ><a
+                    [routerLink]="outingUrl(o)"
+                    [attr.aria-label]="t('Découvrir ') + o.title"
+                    >{{ t("Découvrir") }} <i-tabler name="arrow-right"
+                  /></a>
+                </footer>
+              </div>
+            </article>
+          }
+        </div>
+      }
+      @if (hasMore() && !loading() && !error()) {
+        <div class="load-more" #loadTrigger>
+          @if (loadingMore()) {
+            <p role="status">{{ t("Chargement des sorties suivantes…") }}</p>
+          } @else {
+            @if (moreError()) {
+              <p role="alert">
+                {{ t("Impossible de charger la suite pour le moment.") }}
+              </p>
+            }
+            <button class="primary" (click)="loadMore(true)">
+              {{
+                moreError() ? t("Réessayer") : t("Voir les sorties suivantes")
+              }}
+            </button>
+          }
+        </div>
+      }
+      <footer class="page-footer">
+        <span
+          >idées. <small>{{ t("de sorties en Alsace") }}</small></span
+        ><span>{{ t("Le Bas-Rhin et le Haut-Rhin à portée d’envie.") }}</span>
+      </footer>
+    </div>
+  </section>
+</main>
