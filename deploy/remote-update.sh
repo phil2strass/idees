@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Native update over SSH. Existing PostgreSQL and application data are never replaced.
+# Native update over SSH; database replacement requires an explicit flag.
 set -Eeuo pipefail
 umask 077
-(( $# == 4 )) || { echo 'Quatre arguments requis : repertoire, staging, MCP et version. Aucun import de base accepte.' >&2; exit 2; }
+(( $# == 4 || $# == 5 )) || { echo 'Arguments : repertoire, staging, MCP, version, remplacement-base (true/false facultatif).' >&2; exit 2; }
 idee_dir="$1"
+export PATH="$idee_dir/.tools/bin:$PATH"
 idee_stage="$2"
 idee_mcp="$3"
 idee_version="$4"
+idee_replace_db="${5:-false}"
+idee_maintenance=false
+idee_timer_active=false
+idee_database_may_have_changed=false
 [[ "$idee_dir" =~ ^/[a-zA-Z0-9_./-]+$ && "$idee_dir" != / && "$idee_dir" != *'/../'* && "$idee_dir" != */.. ]] || exit 2
 [[ "$idee_stage" =~ ^/tmp/idee-deploy\.[a-zA-Z0-9]{8}$ && "$idee_version" =~ ^[a-f0-9]{64}$ ]] || exit 2
 [[ "$idee_mcp" == true || "$idee_mcp" == false ]] || exit 2
+[[ "$idee_replace_db" == true || "$idee_replace_db" == false ]] || exit 2
+[[ "$idee_replace_db" == false || -s "$idee_stage/database.dump" ]] || { echo 'Archive de base locale absente.' >&2; exit 2; }
 idee_phase='vérification des prérequis'
 idee_backup=''
 finish() {
@@ -18,7 +25,15 @@ finish() {
   if (( idee_status != 0 )); then
     printf '\nÉchec pendant : %s.\n' "$idee_phase" >&2
     [[ -z "$idee_backup" ]] || printf 'Sauvegardes conservées : %s\n' "$idee_backup" >&2
-    echo 'Aucune restauration automatique : une migration de base peut avoir été appliquée.' >&2
+    if [[ "$idee_database_may_have_changed" == true ]]; then
+      echo 'Aucune restauration automatique : la base peut avoir été remplacée ou migrée.' >&2
+    else
+      echo 'Aucun remplacement ni migration de base effectué.' >&2
+    fi
+    if [[ "$idee_maintenance" == true ]]; then
+      echo 'Maintenance engagée : vérifier l’état de idee-api, idee-ssr et import. Aucun redémarrage de secours automatique.' >&2
+      printf 'Timer actif avant maintenance : %s\n' "$idee_timer_active" >&2
+    fi
   fi
   rm -rf -- "$idee_stage"
   exit "$idee_status"
@@ -46,10 +61,22 @@ if [[ "$idee_mcp" == true ]]; then
   [[ -x "$idee_dir/idee-mcp/.venv/bin/python" ]] || exit 1
   sudo -n -l /usr/bin/systemctl restart idee-tunnel.service >/dev/null
 fi
+if [[ "$idee_replace_db" == true ]]; then
+  sudo -n -l /usr/bin/systemctl stop idee-import.timer idee-import.service idee-api.service idee-ssr.service >/dev/null
+  sudo -n -l /usr/bin/systemctl start idee-api.service idee-ssr.service >/dev/null
+  if systemctl is-active --quiet idee-import.timer; then
+    idee_timer_active=true
+    sudo -n -l /usr/bin/systemctl start idee-import.timer >/dev/null
+  fi
+  pg_restore --list "$idee_stage/database.dump" >/dev/null
+fi
 mkdir "$idee_stage/source"
 tar -xzf "$idee_stage/source.tar.gz" -C "$idee_stage/source" --no-same-owner --same-permissions
 mkdir -p "$idee_stage/source/idee-front/src/assets"
 printf '{"version":"%s"}\n' "$idee_version" > "$idee_stage/source/idee-front/src/assets/deploy-version.json"
+if [[ "$idee_replace_db" == true ]]; then
+  python3 "$idee_stage/source/deploy/database.py" --config "$idee_dir/deploy/.env" check-replace
+fi
 idee_phase='construction native (le site actuel reste actif)'
 idee_release="$idee_dir/.runtime/releases/$(date -u +%Y%m%dT%H%M%SZ)-${idee_version:0:12}"
 bash "$idee_stage/source/deploy/build-native.sh" "$idee_release"
@@ -59,6 +86,11 @@ python3 - "$idee_stage/calendar-check.json" <<'PY'
 import json,sys
 assert json.load(open(sys.argv[1])) == [], 'Moteur de calendrier invalide'
 PY
+if [[ "$idee_replace_db" == true ]]; then
+  idee_phase='arrêt des services et imports avant remplacement de la base'
+  idee_maintenance=true
+  sudo -n /usr/bin/systemctl stop idee-import.timer idee-import.service idee-api.service idee-ssr.service
+fi
 idee_phase='sauvegarde des sources et de PostgreSQL'
 mkdir -p backups
 chmod 700 backups
@@ -83,10 +115,20 @@ chmod +x deploy.sh start-front.sh download-images.sh import-outings.sh generate-
 mkdir -p data/images logs
 # Refresh only these application's units; installation does not start them.
 python3 deploy/install-services.py
+if [[ "$idee_replace_db" == true ]]; then
+  idee_phase='remplacement transactionnel de la base distante par la base locale'
+  python3 deploy/database.py restore "$idee_stage/database.dump"
+  idee_database_may_have_changed=true
+fi
 idee_phase='bascule vers la nouvelle version, migrations Liquibase'
 ln -s "$idee_release" .runtime/current.next
 mv -Tf .runtime/current.next .runtime/current
-sudo -n /usr/bin/systemctl restart idee-api.service idee-ssr.service
+idee_database_may_have_changed=true
+if [[ "$idee_replace_db" == true ]]; then
+  sudo -n /usr/bin/systemctl start idee-api.service idee-ssr.service
+else
+  sudo -n /usr/bin/systemctl restart idee-api.service idee-ssr.service
+fi
 idee_phase='contrôle HTTP local'
 curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 --output /dev/null http://127.0.0.1:8087/api/health
 curl --fail --silent --show-error --retry 10 --retry-delay 2 --retry-all-errors --max-time 5 --output /dev/null http://127.0.0.1:4000/_health
@@ -107,10 +149,18 @@ python3 - "$idee_stage/local-version.json" "$idee_version" <<'PY'
 import json,sys
 if json.load(open(sys.argv[1])).get('version')!=sys.argv[2]: raise SystemExit('Version locale inattendue.')
 PY
+if [[ "$idee_replace_db" == true && "$idee_timer_active" == true ]]; then
+  sudo -n /usr/bin/systemctl start idee-import.timer
+fi
+idee_maintenance=false
 if [[ "$idee_mcp" == true ]]; then
   idee_phase='mise à jour du MCP et redémarrage du tunnel'
   "$idee_dir/idee-mcp/.venv/bin/python" -m pip install -r "$idee_dir/idee-mcp/requirements.txt"
   sudo -n /usr/bin/systemctl restart idee-tunnel.service
   systemctl is-active --quiet idee-tunnel.service
 fi
-printf '\nFrontend et API opérationnels. Secrets et données conservés.\n'
+if [[ "$idee_replace_db" == true ]]; then
+  printf '\nFrontend et API opérationnels. Base OVH remplacée par la base locale ; sauvegarde distante conservée.\n'
+else
+  printf '\nFrontend et API opérationnels. Secrets et données conservés.\n'
+fi

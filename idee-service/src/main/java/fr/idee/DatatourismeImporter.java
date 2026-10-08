@@ -21,6 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DatatourismeImporter {
+    @org.springframework.beans.factory.annotation.Value("${idee.jobs.scheduled-enabled:true}")
+    private boolean scheduledEnabled = true;
     static final String ENDPOINT = "https://api.datatourisme.fr/v1/entertainmentAndEvent";
     static final String FIELDS = "*";
     static final int SELECTION_VERSION = 1;
@@ -61,6 +63,8 @@ public class DatatourismeImporter {
 
     // One committed page per tick: restarts resume the exact cursor saved with the records.
     @Scheduled(initialDelay=30000, fixedDelay=5000)
+    public void scheduledTick() { if (scheduledEnabled) tick(); }
+
     public void tick() {
         if (!enabled || key.isBlank()) return;
         String[] department = {null};

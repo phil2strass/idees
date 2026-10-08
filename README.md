@@ -63,7 +63,7 @@ export IDEE_API_BASE_URL='http://127.0.0.1:8087'
 test -n "$IDEE_IMPORT_TOKEN" && echo 'Clé chargée' || echo 'Clé absente'
 ```
 
-Pour la production, définir `IDEE_API_BASE_URL='https://idees.cavousdit.com'` et utiliser son `IDEE_IMPORT_TOKEN`, distinct de celui du développement.
+Pour la production, définir `IDEE_API_BASE_URL='https://ideesdesorties.eu'` et utiliser son `IDEE_IMPORT_TOKEN`, distinct de celui du développement.
 
 ### Descriptions françaises avec Mistral Batch
 
@@ -131,15 +131,39 @@ Les tests métier couvrent les récurrences ordinales, les exceptions, les repor
 
 Le service recalcule le calendrier au démarrage et chaque nuit à 03 h 15 (Europe/Paris). Les créations par API calculent leurs occurrences immédiatement. Pour les modifications SQL directes uniquement, relancer `python3 scripts/project_calendar.py` en chargeant les variables DB de `.env`. La projection par défaut va de J−31 à J+550. Elle est recalculée dans une transaction : un échec préserve la projection précédente. La table `idee_calendar_projection` indique sa couverture réelle.
 
-L’accueil et les fiches utilisent le rendu serveur Angular : Apache transmet les pages au service Node `idee-ssr`, qui sert aussi les assets, et `/api` au service Java `idee-api`. Le HTML initial contient le contenu et les métadonnées ; Angular reprend ensuite les interactions par hydratation. Voir [rendu serveur et configuration](docs/server-rendering.md). Le déploiement utilise PostgreSQL natif et des services systemd pour Java, Node et l’import quotidien.
+L’accueil et les fiches utilisent le rendu serveur Angular : Apache transmet les pages au service Node `idee-ssr`, qui sert aussi les assets, et `/api` au service Java `idee-api`. Le HTML initial contient le contenu et les métadonnées ; Angular reprend ensuite les interactions par hydratation. Voir [rendu serveur et configuration](docs/server-rendering.md). Le déploiement utilise PostgreSQL natif et des services systemd pour Java, Node et l’import quotidien. Sur OVH, le timer quotidien lance import → Mistral → traductions à 04:00 UTC (06:00 Paris en été, 05:00 en hiver). Les workers Mistral/OpenAI de l’API permanente sont désactivés par le lanceur natif ; les batches en attente sont repris le lendemain. Suivi : `ssh ovh "sudo journalctl -u idee-import.service --since today -f"`. Voir [le fonctionnement et le suivi](deploy/README.md#import-quotidien-et-traitements).
 
 Ce premier lot fournit le catalogue public et son schéma. La création de vraies sorties est disponible via une API protégée et un pont MCP stdio ; voir [API et MCP](docs/api-mcp.md). La modification et l’administration complète restent un prochain lot. Les horaires d’ouverture saisonniers sont modélisés ; le filtre par date porte pour l’instant sur les événements datés, et les sorties permanentes ont leur filtre distinct.
 
 ## Déploiement et intégration
 
-Pour mettre à jour l’installation existante sur OVH : `./deploy.sh`.
-Vérification locale sans déploiement : `./deploy.sh --check`.
-Le script sauvegarde la base distante, reconstruit le frontend et l’API, conserve les secrets et vérifie le site public. Voir les options et prérequis dans [le guide de déploiement](deploy/README.md).
+Depuis la racine du projet, pour mettre à jour l’installation native existante sur OVH :
+
+```bash
+# Vérifier les prérequis OVH sans modification distante
+./deploy.sh --doctor
+
+# Déployer en conservant les données distantes
+./deploy.sh
+
+# Déployer et remplacer les données distantes par la base locale
+./deploy.sh --replace-db
+
+# Vérifier les sources et les options, sans connexion ni déploiement
+./deploy.sh --check --replace-db
+```
+
+**État OVH :** le serveur a été migré vers les services natifs le 8 octobre 2026, avec remplacement de la base par la copie locale et transfert des images. Les prochains déploiements peuvent utiliser les commandes ci-dessus. Les sauvegardes de l’ancienne installation sont conservées ; voir [le compte rendu OVH](deploy/README.md#état-ovh-après-la-migration-du-8-octobre-2026).
+
+**Première migration d’un autre serveur :** si le diagnostic indique que `.venv`, `.runtime/current` ou les services natifs sont absents, `deploy.sh` ne peut pas encore mettre à jour ce serveur. Retirer les fichiers Docker du dépôt ne migre pas une installation déjà en production. Préparer d’abord la [migration native du serveur](deploy/README.md#migration-dune-installation-existante), puis relancer le déploiement. Le script vérifie ces prérequis avant d’exporter la base locale.
+
+La cible par défaut est `ovh:/home/debian/idee`, pour le site `https://ideesdesorties.eu`. Le script reconstruit le frontend et l’API, sauvegarde la base distante, conserve les secrets et vérifie le site public.
+
+**Avec `--replace-db`, les données distantes sont écrasées par celles de la base configurée dans `.env` sur ta machine.** La destination est la base configurée dans `deploy/.env` sur OVH. Le script arrête les traitements et le site, sauvegarde la base distante dans `backups/deploy-*/database.dump`, remplace le schéma applicatif `public` dans une transaction, puis relance les services. Une erreur SQL annule le remplacement ; la sauvegarde reste conservée. Cette opération entraîne une interruption temporaire du site et exige une base dédiée au projet.
+
+Les images locales ne sont pas transférées : les fichiers déjà présents sur OVH sont conservés. Les images référencées par la base importée mais absentes du serveur seront remises en attente de téléchargement si le worker d’images est activé. Les fichiers `.env` ne sont jamais transférés.
+
+Le mode `--check` ne teste pas les connexions PostgreSQL/SSH ni les privilèges distants. Voir les options, les prérequis et la conduite à tenir en cas d’échec dans [le guide de déploiement](deploy/README.md).
 
 
 - [Installation vide sur serveur dédié](deploy/README.md) : Java, Node, PostgreSQL, Python, services systemd et proxy Apache HTTPS.

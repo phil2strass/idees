@@ -25,24 +25,36 @@ public class IdeeApplication {
   var app=new SpringApplication(IdeeApplication.class);
   app.setWebApplicationType(WebApplicationType.NONE);
   int result=1;
-  try (var context=app.run(args)) {
+  var batchArgs=new java.util.ArrayList<>(java.util.List.of(args));
+  batchArgs.add("--idee.jobs.scheduled-enabled=false");
+  batchArgs.add("--idee.calendar-refresh-enabled=false");
+  try (var context=app.run(batchArgs.toArray(String[]::new))) {
    var importer=context.getBean(DatatourismeImporter.class);
    var descriptions=context.getBean(OutingDescriptionWorker.class);
-   var db=context.getBean(JdbcTemplate.class);
+   var translations=context.getBean(OutingTranslationWorker.class);
+   if (!importer.isEnabled() || !descriptions.isEnabled() || !translations.isEnabled())
+    throw new IllegalStateException("Daily providers must be configured");
+   var job=new DailyImportJob(importer,descriptions,translations,context.getBean(JdbcTemplate.class));
    importer.requestSync();
    Instant deadline=Instant.now().plus(Duration.ofHours(3));
+   Instant nextLog=Instant.MIN;
+   DailyImportJob.Progress progress=null;
    while (Instant.now().isBefore(deadline)) {
-    importer.tick();
-    descriptions.processNext();
-    Long pending=db.queryForObject("SELECT count(*) FROM idee_datatourisme_state WHERE sync_requested OR next_url IS NOT NULL OR completed_at IS NULL",Long.class);
-    if (pending!=null && pending==0 && (!descriptions.isEnabled() || descriptions.readyCount()==0)) {
-     result=0;
-     System.out.println("Descriptions automatiques : "+descriptions.status());
-     break;
+    progress=job.step();
+    if (!Instant.now().isBefore(nextLog) || progress.complete()) {
+     System.out.println("Traitement quotidien : "+progress);
+     nextLog=Instant.now().plusSeconds(60);
     }
+    if (progress.complete()) { result=0; break; }
     Thread.sleep(5000);
    }
-   if (result!=0) System.err.println("DATAtourisme : delai maximal atteint ; reprise au prochain lancement.");
+   if (result!=0 && progress!=null && progress.imports()==0) {
+    // Provider batches are asynchronous: keep their IDs and resume tomorrow.
+    result=0;
+    System.out.println("Fenetre quotidienne terminee ; batches restants repris demain : "+progress);
+   } else if (result!=0) {
+    System.err.println("DATAtourisme : delai maximal atteint ; reprise au prochain lancement.");
+   }
   } catch (InterruptedException e) {
    Thread.currentThread().interrupt();
   } catch (Exception e) {

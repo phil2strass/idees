@@ -13,16 +13,17 @@ export class OutingPresentation {
 
   illustration(o: Outing) {
     const category = o.categories[0]?.slug;
-    return (
-      "assets/outing-" +
-      (category === "culture" || category === "marche"
-        ? "village"
-        : category === "famille"
-          ? "vosges"
-          : "vines") +
-      ".svg"
-    );
+    const illustrations: Record<string, string> = {
+      nature: 'nature',
+      culture: 'culture',
+      marche: 'marche',
+      famille: 'famille',
+      spectacle: 'spectacle',
+      atelier: 'atelier',
+    };
+    return `assets/illustration-${illustrations[category ?? ''] ?? 'alsace'}-simple.webp`;
   }
+
   datePart(occurrence: Occurrence, part: "day" | "month") {
     return new Intl.DateTimeFormat(this.i18n.current(), {
       [part]: part === "day" ? "numeric" : "short",

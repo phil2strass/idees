@@ -16,18 +16,50 @@ args = parser.parse_args()
 if not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_-]*', args.user) or not re.fullmatch(r'/[a-zA-Z0-9_./-]+', str(root)):
     raise SystemExit('Utilisateur ou chemin de projet invalide.')
 units = {}
+private_database = (root / 'data/postgresql16/PG_VERSION').is_file()
+if private_database:
+    units['idee-db.service'] = f'''[Unit]
+Description=Idees Alsace - PostgreSQL 16 prive
+After=network.target
+
+[Service]
+Type=simple
+User={args.user}
+WorkingDirectory={root}
+ExecStart={root}/.tools/bin/postgres -D {root}/data/postgresql16
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+KillSignal=SIGINT
+MemoryMax=768M
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={root}/data {root}/logs
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
+'''
+
 for name, mode, title in [('idee-api', 'api', 'API'), ('idee-ssr', 'ssr', 'Angular SSR'), ('idee-import', 'import', 'Import quotidien')]:
     oneshot = mode == 'import'
+    database_dependency = 'Wants=idee-db.service\nAfter=idee-db.service\n' if private_database and mode != 'ssr' else ''
     units[name + '.service'] = f'''[Unit]
 Description=Idees Alsace - {title}
 Wants=network-online.target
 After=network-online.target
-ConditionPathExists={root}/.runtime/current/service.jar
+{database_dependency}ConditionPathExists={root}/.runtime/current/service.jar
 
 [Service]
 Type={'oneshot' if oneshot else 'simple'}
 User={args.user}
 WorkingDirectory={root}
+Environment="PATH={root}/.tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="LC_ALL=C.UTF-8"
 ExecStart=/usr/bin/python3 {root}/deploy/run-service.py {mode}
 {('TimeoutStartSec=4h' if oneshot else 'Restart=on-failure' + chr(10) + 'RestartSec=5')}
 TimeoutStopSec=60

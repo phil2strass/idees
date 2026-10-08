@@ -46,8 +46,8 @@ Les images sont transmises par `images` (0 à 12). Chaque image exige une URL HT
 Exemple depuis un shell où la clé privée est déjà chargée dans l’environnement :
 
 ```bash
-curl --fail-with-body "https://idees.cavousdit.com/api/outings?date=2027-06-12"
-curl --fail-with-body -X POST "https://idees.cavousdit.com/api/admin/outings" \
+curl --fail-with-body "https://ideesdesorties.eu/api/outings?date=2027-06-12"
+curl --fail-with-body -X POST "https://ideesdesorties.eu/api/admin/outings" \
   -H "Authorization: Bearer $IDEE_IMPORT_TOKEN" \
   -H 'Content-Type: application/json' \
   --data-binary @ma-sortie-verifiee.json
@@ -81,7 +81,7 @@ Configuration générique à adapter au client MCP :
       "command": "/CHEMIN/idees/idee-mcp/.venv/bin/python",
       "args": ["/CHEMIN/idees/idee-mcp/server.py"],
       "env": {
-        "IDEE_API_URL": "https://idees.cavousdit.com",
+        "IDEE_API_URL": "https://ideesdesorties.eu",
         "IDEE_IMPORT_TOKEN": "CLE_PRIVEE_DU_SERVEUR"
       }
     }
@@ -95,7 +95,7 @@ Les clients qui acceptent uniquement une URL MCP distante nécessiteront un tran
 
 ## Instance déployée
 
-API : `https://idees.cavousdit.com`. Le projet se trouve sur `ssh ovh`, dans `/home/debian/idee`. La clé d’import effective est celle de `/home/debian/idee/deploy/.env` sur le serveur ; la clé de développement locale est différente. Le site public ne nécessite pas de connexion.
+API : `https://ideesdesorties.eu`. Le projet se trouve sur `ssh ovh`, dans `/home/debian/idee`. La clé d’import effective est celle de `/home/debian/idee/deploy/.env` sur le serveur ; la clé de développement locale est différente. Le site public ne nécessite pas de connexion.
 
 
 ## Tunnel privé OpenAI sur OVH
@@ -139,7 +139,7 @@ Pour rattraper jusqu’à 500 sorties sans descriptions longue et courte frança
 
 ```bash
 curl --fail-with-body -X POST \
-  'https://idees.cavousdit.com/api/admin/descriptions/generate-missing?limit=500' \
+  'https://ideesdesorties.eu/api/admin/descriptions/generate-missing?limit=500' \
   -H "Authorization: Bearer ${IDEE_IMPORT_TOKEN}"
 ```
 
@@ -155,7 +155,7 @@ Rappeler la route ajoute le lot suivant ; une réponse `accepted: 0` signifie qu
 
 ```bash
 curl --fail-with-body \
-  'https://idees.cavousdit.com/api/admin/descriptions/status' \
+  'https://ideesdesorties.eu/api/admin/descriptions/status' \
   -H "Authorization: Bearer ${IDEE_IMPORT_TOKEN}"
 ```
 

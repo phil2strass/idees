@@ -24,7 +24,7 @@ psql = ['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-h', env.get('DB_HOST', 'localho
         '-p', env.get('DB_PORT', '5432'), '-U', env.get('DB_USER', 'htpweb'),
         '-d', env.get('DB_NAME', 'idee')]
 
-for test in ('OutingDescriptionWorkerDatabaseTest', 'DatatourismeDatabaseTest', 'OutingDescriptionsDatabaseTest', 'OutingTranslationsDatabaseTest', 'PublicUrlsDatabaseTest', 'OutingDatesDatabaseTest', 'ImportedImagesDatabaseTest'):
+for test in ('DailyImportJobDatabaseTest', 'OutingDescriptionWorkerDatabaseTest', 'DatatourismeDatabaseTest', 'OutingDescriptionsDatabaseTest', 'OutingTranslationsDatabaseTest', 'PublicUrlsDatabaseTest', 'OutingDatesDatabaseTest', 'ImportedImagesDatabaseTest'):
     schema = 'idee_datatourisme_test_' + uuid.uuid4().hex[:12]
     subprocess.run(psql + ['-c', 'CREATE SCHEMA ' + schema], env=env, check=True, capture_output=True)
     env.update(SPRING_DATASOURCE_URL='jdbc:postgresql://' + env.get('DB_HOST', 'localhost') + ':'

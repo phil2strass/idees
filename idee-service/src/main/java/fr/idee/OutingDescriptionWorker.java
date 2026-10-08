@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OutingDescriptionWorker {
+    @org.springframework.beans.factory.annotation.Value("${idee.jobs.scheduled-enabled:true}")
+    private boolean scheduledEnabled = true;
     private final JdbcTemplate db;
     private final OutingDescriptionBatches batches;
     private final MistralDescriptions mistral;
@@ -27,7 +29,7 @@ public class OutingDescriptionWorker {
     public boolean isEnabled() { return automatic && mistral.isConfigured(); }
 
     @Scheduled(initialDelay=60000, fixedDelay=2000)
-    public void tick() { processNext(); }
+    public void tick() { if (scheduledEnabled) processNext(); }
 
     public boolean processNext() {
         return isEnabled() && batches.processNext();

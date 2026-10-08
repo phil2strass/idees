@@ -15,6 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OutingTranslationWorker {
+    @org.springframework.beans.factory.annotation.Value("${idee.jobs.scheduled-enabled:true}")
+    private boolean scheduledEnabled = true;
     private final JdbcTemplate db;
     private final OpenAiTranslations client;
     private final TransactionTemplate transaction;
@@ -81,7 +83,7 @@ public class OutingTranslationWorker {
     }
 
     @Scheduled(initialDelay=60000,fixedDelay=5000)
-    public void tick() { processNext(); }
+    public void tick() { if (scheduledEnabled) processNext(); }
     public boolean processNext() {
         if(!isEnabled()) return false;
         try {

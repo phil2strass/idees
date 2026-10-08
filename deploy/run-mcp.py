@@ -9,6 +9,6 @@ token = values['IDEE_IMPORT_TOKEN'].strip().strip(chr(34)).strip(chr(39))
 if len(token) < 32:
     raise SystemExit('Missing production import credential')
 env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
-       'IDEE_API_URL': 'https://idees.cavousdit.com', 'IDEE_IMPORT_TOKEN': token}
+       'IDEE_API_URL': 'https://ideesdesorties.eu', 'IDEE_IMPORT_TOKEN': token}
 python = str(root / 'idee-mcp/.venv/bin/python')
 os.execve(python, [python, str(root / 'idee-mcp/server.py')], env)

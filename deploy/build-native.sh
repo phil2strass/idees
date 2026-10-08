@@ -5,6 +5,7 @@ umask 022
 idee_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 idee_output="${1:?Usage : build-native.sh /chemin/vers/nouvelle-version}"
 [[ "$idee_output" == /* && ! -e "$idee_output" ]] || { echo 'La destination doit être un nouveau chemin absolu.' >&2; exit 1; }
+export PATH="$idee_root/.tools/bin:$PATH"
 cd -- "$idee_root"
 for idee_command in java mvn node npm python3; do
   command -v "$idee_command" >/dev/null || { echo "Commande requise : $idee_command" >&2; exit 1; }

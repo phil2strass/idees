@@ -19,7 +19,7 @@ Les services natifs `idee-api` et `idee-ssr` sont gérés par systemd et s’ex�
 ## Configuration
 
 - `API_ORIGIN` : adresse de l’API utilisée par Node, `http://127.0.0.1:8087` dans le déploiement natif et par défaut en local. Aucun secret n’est nécessaire pour lire le catalogue public.
-- `PUBLIC_ORIGIN` : origine publique utilisée par le serveur Node pour les liens canoniques. Le lanceur natif utilise `IDEE_PUBLIC_ORIGIN`, dont la valeur par défaut est `https://idees.cavousdit.com`. Renseigner la bonne origine HTTPS dans `deploy/.env` pour un autre domaine.
+- `PUBLIC_ORIGIN` : origine publique utilisée par le serveur Node pour les liens canoniques. Le lanceur natif utilise `IDEE_PUBLIC_ORIGIN`, dont la valeur par défaut est `https://ideesdesorties.eu`. Renseigner la bonne origine HTTPS dans `deploy/.env` pour un autre domaine.
 - `PORT` et `HOST` : écoute du serveur Node autonome, `4000` et `127.0.0.1` par défaut.
 
 Le serveur Node construit les URL à partir de `PUBLIC_ORIGIN`, pas des en-têtes Host ou X-Forwarded-Host transmis par un visiteur. Il ne transmet ni cookie ni autorisation utilisateur à l’API publique. Les appels HTTP sont bornés à dix secondes et les réponses HTML ne sont pas mises en cache (`Cache-Control: no-store`).

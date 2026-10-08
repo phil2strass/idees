@@ -36,7 +36,7 @@ class DeployTest(unittest.TestCase):
             (root / 'idee-front/version.txt').write_text(marker)
             (root / 'scripts/expand_calendar_json.py').write_text('print("[]")\n')
             (root / 'scripts/project_calendar.py').write_text('# fixture\n')
-        (self.live / 'deploy/.env').write_text('DB_PASSWORD=PRIVATE_PRODUCTION_SECRET\nDB_USER=idee\n')
+        (self.live / 'deploy/.env').write_text('DB_PASSWORD=PRIVATE_PRODUCTION_SECRET\nDB_USER=idee\nDB_NAME=idee\n')
         (self.source / 'deploy/.env').write_text('DO_NOT_UPLOAD=local-secret\n')
         (self.source / 'idee-front/.env.production').write_text('DO_NOT_UPLOAD=local-secret\n')
         (self.live / 'data/images').mkdir(parents=True)
@@ -71,7 +71,18 @@ if name=='npm' and args==['run','build']:
     (dest/'server.mjs').write_text('// simulated SSR')
     browser=pathlib.Path('dist/idee/browser/assets');browser.mkdir(parents=True,exist_ok=True)
     (browser/'deploy-version.json').write_text(pathlib.Path('src/assets/deploy-version.json').read_text())
-if name=='psql' and failure=='database': sys.exit(1)
+if name=='node' and args==['--version']: print('v24.21.0')
+if name in ('psql','pg_dump','pg_restore') and args==['--version']:
+    print(name+' (PostgreSQL) 16.10');sys.exit(0)
+if name=='psql':
+    if failure=='database': sys.exit(1)
+    if '-tAc' in args and 'pg_namespace' in args[-1]:
+        print('refused' if failure=='shared-database' else 'ok')
+    if '--single-transaction' in args and failure=='restore': sys.exit(1)
+if name=='pg_restore':
+    if '--list' in args: print('1; 2615 2200 SCHEMA - public idee')
+    if '--file' in args: pathlib.Path(args[args.index('--file')+1]).write_text('-- simulated SQL')
+if name=='systemctl' and args==['is-active','--quiet','idee-import.timer'] and failure=='timer-inactive': sys.exit(3)
 if name=='pg_dump':
     if failure=='backup': sys.exit(1)
     sys.stdout.buffer.write(b'SIMULATED_BACKUP')
@@ -172,13 +183,96 @@ if name=='curl' and '--output' in args:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('site public ne sert pas la version attendue', result.stderr)
 
-    def test_database_dump_argument_and_legacy_options_are_rejected(self):
+    def test_database_replacement_requires_explicit_flag_and_dump(self):
         result = self.update(extra_args=('/tmp/database.dump',))
         self.assertEqual(result.returncode, 2)
         self.assertFalse(self.log.exists())
-        for option in ('--replace-db', '--export-db'):
-            result = subprocess.run(['bash', str(ROOT/'deploy.sh'), option], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 2)
+        result = self.update(extra_args=('true',))
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.log.exists())
+        result = subprocess.run(['bash', str(ROOT/'deploy.sh'), '--export-db'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+
+    def test_replace_database_stops_writers_backs_up_and_restores_before_start(self):
+        (self.stage/'database.dump').write_bytes(b'LOCAL_DUMP')
+        result = self.update(extra_args=('true',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        stop = next(i for i,c in enumerate(calls) if c[:4]==['sudo','-n','/usr/bin/systemctl','stop'])
+        backup = next(i for i,c in enumerate(calls) if c[0]=='pg_dump')
+        restore = next(i for i,c in enumerate(calls) if c[0]=='psql' and '--single-transaction' in c)
+        start = next(i for i,c in enumerate(calls) if c[:4]==['sudo','-n','/usr/bin/systemctl','start'])
+        self.assertLess(stop, backup)
+        self.assertLess(backup, restore)
+        self.assertLess(restore, start)
+        self.assertIn(['sudo','-n','/usr/bin/systemctl','start','idee-import.timer'], calls)
+        self.assertIn('Base OVH remplacée', result.stdout)
+        self.assertEqual((self.live/'data/images/photo.jpg').read_bytes(), b'keep-image')
+        self.assertNotIn('PRIVATE_PRODUCTION_SECRET', result.stdout+result.stderr+self.log.read_text())
+        self.assertTrue(list((self.live/'backups').glob('*/database.dump')))
+
+    def test_failed_restore_keeps_backup_and_does_not_switch_or_start(self):
+        (self.stage/'database.dump').write_bytes(b'LOCAL_DUMP')
+        result = self.update('restore', extra_args=('true',))
+        self.assertNotEqual(result.returncode,0)
+        self.assertTrue(list((self.live/'backups').glob('*/database.dump')))
+        self.assertEqual((self.live/'.runtime/current/service.jar').read_bytes(), b'old-jar')
+        self.assertFalse(any(c[:4]==['sudo','-n','/usr/bin/systemctl','start'] for c in self.calls()))
+
+    def test_shared_database_is_rejected_before_maintenance(self):
+        (self.stage/'database.dump').write_bytes(b'LOCAL_DUMP')
+        result = self.update('shared-database', extra_args=('true',))
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse(any(c[:4]==['sudo','-n','/usr/bin/systemctl','stop'] for c in self.calls()))
+
+    def test_inactive_import_timer_is_not_started(self):
+        (self.stage/'database.dump').write_bytes(b'LOCAL_DUMP')
+        result = self.update('timer-inactive', extra_args=('true',))
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertNotIn(['sudo','-n','/usr/bin/systemctl','start','idee-import.timer'],self.calls())
+
+    def test_check_replace_database_never_exports_or_connects(self):
+        result = subprocess.run(['bash',str(ROOT/'deploy.sh'),'--check','--replace-db'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('aucun export ni remplacement',result.stdout)
+
+    def test_missing_native_installation_is_reported_before_export_or_upload(self):
+        shutil.rmtree(self.live/'.runtime')
+        (self.live/'compose.yaml').write_text('# old deployment')
+        ssh=self.bin/'ssh'
+        ssh.write_text('#!/usr/bin/env python3\nimport subprocess,sys\n'
+                       + 'sys.exit(subprocess.run(["bash","-s","--",' + repr(str(self.live)) + ']).returncode)\n')
+        ssh.chmod(0o755)
+        env=dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
+                 DEPLOY_TEST_LOG=str(self.log), IDEE_DEPLOY_HOST='mock-host')
+        result=subprocess.run(['bash',str(ROOT/'deploy.sh'),'--replace-db'],env=env,capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Ancien déploiement détecté',result.stderr)
+        self.assertIn('.runtime/current',result.stderr)
+        self.assertNotIn('Export de la base locale',result.stdout)
+        self.assertNotIn('Archive de sources créée',result.stdout)
+        self.assertFalse(any(c[0]=='pg_dump' and '--version' not in c for c in self.calls()))
+
+    def test_doctor_checks_native_installation_without_export_or_changes(self):
+        ssh=self.bin/'ssh'
+        ssh.write_text('#!/usr/bin/env python3\nimport subprocess,sys\n'
+                       + 'sys.exit(subprocess.run(["bash","-s","--",' + repr(str(self.live)) + ']).returncode)\n')
+        ssh.chmod(0o755)
+        env=dict(os.environ,PATH=f'{self.bin}:{os.environ["PATH"]}',
+                 DEPLOY_TEST_LOG=str(self.log), IDEE_DEPLOY_HOST='mock-host')
+        result=subprocess.run(['bash',str(ROOT/'deploy.sh'),'--doctor'],env=env,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('Prérequis natifs OVH vérifiés',result.stdout)
+        self.assertNotIn('Archive de sources créée',result.stdout)
+        self.assertFalse(any(c[0]=='sudo' for c in self.calls()))
+        self.assertFalse((self.live/'backups').exists())
+
+    def test_prerequisite_failure_does_not_claim_a_database_migration(self):
+        shutil.rmtree(self.live/'.runtime')
+        result=self.update()
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Aucun remplacement ni migration de base effectué',result.stderr)
+        self.assertNotIn('base peut avoir été',result.stderr)
 
     def test_systemd_units_render_without_installing_or_starting(self):
         dest = self.root/'units'
@@ -188,6 +282,36 @@ if name=='curl' and '--output' in args:
         self.assertIn('04:00:00 UTC', (dest/'idee-import.timer').read_text())
         self.assertIn('Type=oneshot', (dest/'idee-import.service').read_text())
 
+    def test_private_postgres_unit_is_scoped_to_its_project(self):
+        (self.live/'data/postgresql16').mkdir()
+        (self.live/'data/postgresql16/PG_VERSION').write_text('16')
+        dest=self.root/'private-units'
+        result=subprocess.run(['python3',str(self.live/'deploy/install-services.py'),'--output-dir',str(dest),'--user','debian'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        database=(dest/'idee-db.service').read_text()
+        self.assertIn(str(self.live/'.tools/bin/postgres'),database)
+        self.assertIn(str(self.live/'data/postgresql16'),database)
+        self.assertIn('Wants=idee-db.service',(dest/'idee-api.service').read_text())
+        self.assertIn('Wants=idee-db.service',(dest/'idee-import.service').read_text())
+        self.assertIn(str(self.live/'.tools/bin'),(dest/'idee-ssr.service').read_text())
+
+    def test_paid_workers_run_only_in_daily_import_process(self):
+        spec = importlib.util.spec_from_file_location('native_daily_launcher', ROOT/'deploy/run-service.py')
+        module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with (self.live/'deploy/.env').open('a') as config:
+            config.write('MISTRAL_AUTO_ENABLED=true\nOPENAI_TRANSLATIONS_ENABLED=true\n')
+        (self.live/'deploy/.env.datatourisme').write_text('DATATOURISME_API_KEY="private-test-key"\n')
+        _, api = module.command('api', self.live)
+        self.assertEqual(api['MISTRAL_AUTO_ENABLED'], 'false')
+        self.assertEqual(api['OPENAI_TRANSLATIONS_ENABLED'], 'false')
+        _, daily = module.command('import', self.live)
+        self.assertEqual(daily['MISTRAL_AUTO_ENABLED'], 'true')
+        self.assertEqual(daily['OPENAI_TRANSLATIONS_ENABLED'], 'true')
+        self.assertEqual(daily['DATATOURISME_ENABLED'], 'true')
+        self.assertEqual(daily['DATATOURISME_BATCH'], 'true')
+        self.assertEqual(daily['DATATOURISME_API_KEY'], 'private-test-key')
+        self.assertEqual(daily['IDEE_IMAGES_ENABLED'], 'false')
+
     def test_native_launcher_uses_fixed_release_and_keeps_secrets_out_of_node(self):
         spec = importlib.util.spec_from_file_location('native_launcher', ROOT/'deploy/run-service.py')
         module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -195,6 +319,7 @@ if name=='curl' and '--output' in args:
         self.assertEqual(api[-1], str(self.live/'.runtime/releases/old/service.jar'))
         self.assertEqual(env['IDEE_IMAGES_DIRECTORY'], str(self.live/'data/images'))
         self.assertEqual(env['SERVER_ADDRESS'], '127.0.0.1')
+        self.assertTrue(env['PATH'].startswith(str(self.live/'.tools/bin')+os.pathsep))
         node, env = module.command('ssr', self.live)
         self.assertEqual(node[0], 'node')
         self.assertNotIn('DB_PASSWORD', env)

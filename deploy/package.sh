@@ -14,7 +14,7 @@ roots = ['.gitignore', '.env.example', 'README.md', 'AGENTS.md', 'CODEX.md',
          'requirements.txt', 'start-front.sh', 'deploy.sh', 'download-images.sh', 'import-outings.sh', 'generate-all-translations.sh', 'idee-front', 'idee-service',
          'idee-mcp', 'scripts', 'tests', 'docs', 'deploy']
 excluded = {'node_modules', 'target', 'dist', '.angular', '.venv', '__pycache__',
-            '.git', '.tunnel', '.runtime', 'data', 'logs', 'backups', 'audits', '.agents', '.codex'}
+            '.git', '.tunnel', '.runtime', '.tools', 'data', 'logs', 'backups', 'audits', '.agents', '.codex'}
 
 def sources_only(member):
     parts = Path(member.name).parts
