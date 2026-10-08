@@ -49,7 +49,7 @@ export class OutingPresentation {
       : this.t("Tarif à confirmer");
   }
   next(o: Outing) {
-    return o.occurrences.find((x) => x.status !== "cancelled");
+    return o.occurrences.find((x) => x.status !== "cancelled" && new Date(x.endsAt).getTime() > Date.now());
   }
   dateLabel(o: Outing) {
     if (o.kind === "permanent")

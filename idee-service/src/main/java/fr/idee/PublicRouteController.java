@@ -37,7 +37,7 @@ public class PublicRouteController {
         return catalog.outing(resolve(path));
     }
 
-    // Nginx checks the public path before internally serving the Angular shell.
+    // Legacy path validation endpoint; public pages now use Angular SSR.
     @GetMapping("/public-page")
     public ResponseEntity<Void> page(@RequestHeader(value="X-Original-URI", required=false) String path) {
         String slug = resolve(path);

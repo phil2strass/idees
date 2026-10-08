@@ -132,6 +132,10 @@ export class LanguageService {
     return {
       ...outing,
       title: translation.title || outing.title,
+      images: outing.images.map((image) => ({
+        ...image,
+        alt: image.alt === outing.title ? translation.title || image.alt : image.alt,
+      })),
       description: translation.description_longue || outing.description,
       description_courte:
         translation.description_courte || outing.description_courte,

@@ -13,4 +13,7 @@ public class OutingTranslationController {
     @PostMapping("/generate-missing")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String,Object> generateMissing(@RequestParam(defaultValue="500") int limit) { return worker.enqueueMissing(limit); }
+    @PostMapping("/generate-all-missing")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String,Object> generateAllMissing() { return worker.enqueueAllMissing(); }
 }

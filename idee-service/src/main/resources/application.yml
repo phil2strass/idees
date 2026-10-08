@@ -15,6 +15,9 @@ spring:
     time-zone: Europe/Paris
 
 idee:
+  images:
+    enabled: ${IDEE_IMAGES_ENABLED:true}
+    directory: ${IDEE_IMAGES_DIRECTORY:data/images}
   openai:
     api-key: ${OPENAI_API_KEY:}
     translation-model: ${OPENAI_TRANSLATION_MODEL:gpt-4.1-mini-2025-04-14}

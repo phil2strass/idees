@@ -85,7 +85,7 @@ final class OutingDescriptionBatches {
             for(var candidate:candidates) {
                 Object id=candidate.get("id");
                 db.queryForList("SELECT idee_queue_outing_description(?)",id);
-                var current=db.queryForList("SELECT outing_id,source_description FROM idee_outing_description_job WHERE outing_id=? AND batch_id IS NULL AND next_attempt_at<=now()",id);
+                var current=db.queryForList("SELECT outing_id,source_description,import_run_id FROM idee_outing_description_job WHERE outing_id=? AND batch_id IS NULL AND next_attempt_at<=now()",id);
                 if (current.isEmpty()) continue;
                 var item=current.getFirst(); String source=(String)item.get("source_description");
                 if (source.length()>50000) {
@@ -104,7 +104,7 @@ final class OutingDescriptionBatches {
                 VALUES(?,'PREPARED',?,?,?::jsonb,?)
                 """,id,mistral.model,MistralDescriptions.PROMPT_VERSION,payload,items.size());
             for(var item:items) {
-                db.update("INSERT INTO idee_description_batch_item(batch_id,outing_id,source_description) VALUES(?,?,?)",id,item.get("outing_id"),item.get("source_description"));
+                db.update("INSERT INTO idee_description_batch_item(batch_id,outing_id,source_description,import_run_id) VALUES(?,?,?,?)",id,item.get("outing_id"),item.get("source_description"),item.get("import_run_id"));
                 db.update("UPDATE idee_outing_description_job SET batch_id=? WHERE outing_id=?",id,item.get("outing_id"));
             }
             return db.queryForMap("SELECT * FROM idee_description_batch WHERE id=?",id);
@@ -206,6 +206,8 @@ final class OutingDescriptionBatches {
         String source=(String)item.get("source_description");
         try {
             transaction.executeWithoutResult(status -> {
+                db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,
+                    item.get("import_run_id")==null?"":item.get("import_run_id").toString());
                 var locked=db.queryForList("SELECT status,is_demo FROM idee_outing WHERE id=? FOR UPDATE NOWAIT",outing);
                 if(locked.isEmpty()) return;
                 var sources=db.queryForList("SELECT description FROM idee_outing_description_source WHERE outing_id=? AND language='fr'",outing);

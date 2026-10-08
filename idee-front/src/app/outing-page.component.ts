@@ -1,5 +1,7 @@
 import {
   Component,
+  ElementRef,
+  ViewChild,
   DestroyRef,
   inject,
   signal,
@@ -21,6 +23,7 @@ import { catchError, map, startWith, switchMap, tap } from "rxjs/operators";
 import { Outing, SourceContact, SourceLocation } from "./outing.model";
 import { OutingPresentation } from "./outing-presentation";
 import { SITE_ORIGIN } from "./rendering";
+import { localDay, occurrenceRange, shiftDay, weekStart } from "./outing-calendar";
 
 @Component({
   standalone: true,
@@ -51,7 +54,13 @@ export class OutingPageComponent
   });
   loading = signal(true);
   errorStatus = signal(0);
-  showAllDates = signal(false);
+  calendarOpen = signal(false);
+  selectedDay = signal("");
+  calendarMonth = signal("");
+  private readonly now = new Date();
+  @ViewChild("imageDialog") private imageDialog?: ElementRef<HTMLDialogElement>;
+  enlargedImage = signal<Outing["images"][number] | null>(null);
+  private previousOverflow: string | null = null;
   coverFailed = signal(false);
   shareMessage = signal("");
   showShareField = signal(false);
@@ -105,6 +114,22 @@ export class OutingPageComponent
         (r, i, all) => all.findIndex((other) => other.url === r.url) === i,
       ),
   );
+  readonly sourceProducers = computed(() => [...new Set(
+    (this.outing()?.sourceDetails?.contacts || [])
+      .filter((contact) => contact.role === "creator" && contact.name?.trim())
+      .map((contact) => contact.name!.trim()),
+  )].join(" · "));
+  readonly sourceUpdated = computed(() => {
+    const source = this.outing()?.sourceDetails;
+    const day = (source?.updatedOn || source?.updatedAt || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+    const date = new Date(day + "T12:00:00Z");
+    if (Number.isNaN(date.getTime())) return null;
+    return {
+      day,
+      label: new Intl.DateTimeFormat(this.i18n.current(), {dateStyle: "long", timeZone: "UTC"}).format(date),
+    };
+  });
   readonly termGroups = computed(() => {
     const terms = this.outing()?.sourceDetails?.terms || [];
     const names: Record<string, string> = {
@@ -137,10 +162,66 @@ export class OutingPageComponent
       }))
       .filter((g) => g.labels.length);
   });
+  readonly dateRanges = computed(() => (this.outing()?.occurrences || [])
+    .map((occurrence) => ({ occurrence, range: occurrenceRange(occurrence) }))
+    .sort((a, b) => new Date(a.occurrence.startsAt).getTime() - new Date(b.occurrence.startsAt).getTime()));
+  readonly manyDates = computed(() => this.dateRanges().length > 4);
+  readonly today = computed(() => localDay(this.now, this.outing()?.occurrences[0]?.timezone || "Europe/Paris"));
+  readonly thisWeek = computed(() => weekStart(this.today()));
   readonly visibleDates = computed(() => {
-    const dates = this.outing()?.occurrences || [];
-    return this.showAllDates() ? dates : dates.slice(0, 4);
+    const dates = this.dateRanges();
+    if (!this.manyDates()) return dates.map((d) => d.occurrence);
+    const selected = this.calendarOpen() ? this.selectedDay() : "";
+    const first = selected || this.thisWeek();
+    const last = selected || shiftDay(this.thisWeek(), 6);
+    return dates.filter(({ range }) => range[0] <= last && range[1] >= first).map((d) => d.occurrence);
   });
+  readonly calendarBounds = computed(() => {
+    const dates = this.dateRanges();
+    return {
+      first: dates.reduce((first, d) => first < d.range[0] ? first : d.range[0], dates[0]?.range[0] || this.today()).slice(0, 7),
+      last: dates.reduce((last, d) => last > d.range[1] ? last : d.range[1], dates[0]?.range[1] || this.today()).slice(0, 7),
+    };
+  });
+  readonly calendarDays = computed(() => {
+    if (!this.calendarMonth()) return [];
+    const first = this.calendarMonth() + "-01";
+    const start = weekStart(first);
+    const monthEnd = new Date(first + "T12:00:00Z");
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
+    monthEnd.setUTCDate(0);
+    const end = shiftDay(weekStart(monthEnd.toISOString().slice(0, 10)), 6);
+    const days = [];
+    for (let day = start; day <= end; day = shiftDay(day, 1)) {
+      const available = this.dateRanges().some(({ range }) => range[0] <= day && range[1] >= day);
+      days.push({ key: day, number: Number(day.slice(8)), inMonth: day.startsWith(this.calendarMonth()), available });
+    }
+    return days;
+  });
+  readonly weekdays = computed(() => Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat(this.i18n.current(), {
+    weekday: "short", timeZone: "UTC",
+  }).format(new Date(shiftDay("2024-01-01", i) + "T12:00:00Z"))));
+
+  calendarLabel(day: string, month = false) {
+    return new Intl.DateTimeFormat(this.i18n.current(), {
+      ...(month ? { month: "long" as const, year: "numeric" as const } : { weekday: "long" as const, day: "numeric" as const, month: "long" as const, year: "numeric" as const }),
+      timeZone: "UTC",
+    }).format(new Date(day + "T12:00:00Z"));
+  }
+  toggleCalendar() {
+    if (this.calendarOpen()) { this.calendarOpen.set(false); return; }
+    const dates = this.dateRanges();
+    const first = dates.find(({ range }) => range[1] >= this.today());
+    const day = first ? (first.range[0] < this.today() ? this.today() : first.range[0]) : dates[0]?.range[0] || this.today();
+    this.selectedDay.set(day);
+    this.calendarMonth.set(day.slice(0, 7));
+    this.calendarOpen.set(true);
+  }
+  moveCalendarMonth(offset: number) {
+    const date = new Date(this.calendarMonth() + "-01T12:00:00Z");
+    date.setUTCMonth(date.getUTCMonth() + offset);
+    this.calendarMonth.set(date.toISOString().slice(0, 7));
+  }
 
   constructor() {
     super();
@@ -151,10 +232,13 @@ export class OutingPageComponent
     combineLatest([this.route.paramMap, this.reload.pipe(startWith(undefined))])
       .pipe(
         tap(() => {
+          this.closeImage();
           this.loading.set(true);
           this.rawOuting.set(null);
           this.errorStatus.set(0);
-          this.showAllDates.set(false);
+          this.calendarOpen.set(false);
+          this.selectedDay.set("");
+          this.calendarMonth.set("");
           this.coverFailed.set(false);
           this.shareMessage.set("");
           this.showShareField.set(false);
@@ -273,7 +357,7 @@ export class OutingPageComponent
     if (this.safeUrl(outing.images[0]?.url))
       this.meta.updateTag({
         property: "og:image",
-        content: outing.images[0].url,
+        content: new URL(outing.images[0].url, this.siteOrigin).href,
       });
     this.i18n.pageLinks(outingPath, this.siteOrigin, outing.urls);
   }
@@ -283,6 +367,7 @@ export class OutingPageComponent
   }
   safeUrl(value?: string | null) {
     if (!value) return null;
+    if (/^\/api\/media\/images\/(?:[a-f0-9]{64}|[a-z0-9]+(?:-[a-z0-9]+)*-(?:[a-f0-9]{16}|[a-f0-9]{64}))\.(jpg|png|gif|webp|avif)$/.test(value)) return value;
     try {
       const url = new URL(value);
       return ["https:", "http:"].includes(url.protocol) &&
@@ -342,26 +427,6 @@ export class OutingPageComponent
     )
       return "mailto:" + encodeURIComponent(value);
     return null;
-  }
-  sourceNames(role: string) {
-    return [
-      ...new Set(
-        (this.outing()?.sourceDetails?.contacts || [])
-          .filter((c) => c.role === role)
-          .map((c) => c.name)
-          .filter(Boolean),
-      ),
-    ].join(" · ");
-  }
-  sourceDate(value: string | null | undefined) {
-    if (!value) return "";
-    const date = new Date(value.length === 10 ? value + "T12:00:00" : value);
-    return Number.isNaN(date.getTime())
-      ? ""
-      : new Intl.DateTimeFormat(this.i18n.current(), {
-          dateStyle: "long",
-          timeZone: "Europe/Paris",
-        }).format(date);
   }
   resourceLabel(url: string) {
     try {
@@ -447,7 +512,31 @@ export class OutingPageComponent
     ])
       this.meta.removeTag(`property="${property}"`);
   }
+  openImage(image: Outing["images"][number]) {
+    if (!this.browser || !this.imageDialog) return;
+    this.enlargedImage.set(image);
+    this.previousOverflow = this.document.body.style.overflow;
+    this.document.body.style.overflow = "hidden";
+    this.imageDialog.nativeElement.showModal();
+    this.imageDialog.nativeElement.focus({ preventScroll: true });
+  }
+
+  closeImage() {
+    if (this.browser && this.imageDialog?.nativeElement.open)
+      this.imageDialog.nativeElement.close();
+    this.enlargedImage.set(null);
+    if (this.previousOverflow !== null) {
+      this.document.body.style.overflow = this.previousOverflow;
+      this.previousOverflow = null;
+    }
+  }
+
+  closeImageOnBackdrop(event: MouseEvent) {
+    if (event.target === event.currentTarget) this.closeImage();
+  }
+
   ngOnDestroy() {
+    this.closeImage();
     this.clearMetadata();
   }
 }

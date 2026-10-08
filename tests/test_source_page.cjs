@@ -17,8 +17,7 @@ const slug = 'datatourisme-000c8ab9-8f93-34eb-86b0-5356e3594e7c';
     await page.goto(base + '/sorties/' + slug);
     await page.locator('#contacts').waitFor();
     assert(await page.locator('#contacts a[href^="tel:"]').count() > 0);
-    await page.locator('.source-details summary').click();
-    assert((await page.locator('.source-details').innerText()).includes('Informations fournies par'));
+    assert.equal(await page.locator('.source-details, .source-note').count(), 0);
     const french = outing.sourceDetails.translations.find(t => t.language === 'fr');
     const rewritten = outing.descriptions?.find(t => t.language === 'fr');
     assert.equal((await page.locator('.outing-heading .intro').textContent()).trim(), rewritten?.description_longue || rewritten?.description || french.description || french.summary);
@@ -70,6 +69,6 @@ const slug = 'datatourisme-000c8ab9-8f93-34eb-86b0-5356e3594e7c';
     assert.equal(await page.locator('#contacts, #documents, .source-details, #description-language').count(), 0);
     assert((await page.locator('.outing-heading .intro').innerText()).length > 0);
     assert.deepEqual(errors, []);
-    console.log('Browser checks passed: real page, French description, contacts, provenance, documents, multiple locations, mobile layout, safe links and missing data.');
+    console.log('Browser checks passed: real page, French description, contacts, documents, multiple locations, mobile layout, safe links and missing data.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -117,3 +117,35 @@ databaseChangeLog:
             path: 016-translated-urls.sql
             relativeToChangelogFile: true
             splitStatements: false
+  - changeSet:
+      id: idee-017-automatic-translations
+      author: idee
+      changes:
+        - sqlFile:
+            path: 017-automatic-translations.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-018-import-history
+      author: idee
+      changes:
+        - sqlFile:
+            path: 018-import-history.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-019-local-images
+      author: idee
+      changes:
+        - sqlFile:
+            path: 019-local-images.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: idee-020-descriptive-image-names
+      author: idee
+      changes:
+        - sqlFile:
+            path: 020-descriptive-image-names.sql
+            relativeToChangelogFile: true
+            splitStatements: false

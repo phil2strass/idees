@@ -24,7 +24,7 @@ Cible par défaut : ovh:/home/debian/idee
 Site : https://idees.cavousdit.com
 Variables facultatives : IDEE_DEPLOY_HOST, IDEE_DEPLOY_DIR, IDEE_DEPLOY_URL.
 
-L’installation distante doit déjà exister avec Docker Compose et deploy/.env.
+L’installation distante doit déjà exister avec les services systemd idee-api/idee-ssr, PostgreSQL et deploy/.env.
 La base distante et les secrets sont conservés. Aucune donnée locale n’est transférée.
 Les migrations Liquibase restent appliquées au démarrage de l’API.
 HELP
@@ -78,9 +78,9 @@ with tarfile.open(sys.argv[1]) as archive:
         names.add(str(path))
         if path.is_absolute() or '..' in path.parts or member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
             raise SystemExit('Archive refusée : chemin ou type non autorisé.')
-        if any(part in {'.env', '.venv', '.tunnel', 'backups', 'audits', 'node_modules', '.git'} or (part.startswith('.env.') and part != '.env.example') for part in path.parts):
+        if any(part in {'.env', '.venv', '.tunnel', 'backups', 'audits', 'node_modules', '.git', '.runtime', 'data', 'logs'} or (part.startswith('.env.') and part != '.env.example') for part in path.parts):
             raise SystemExit('Archive refusée : fichier privé ou dépendance locale.')
-    required = {'compose.yaml', 'deploy.sh', 'deploy/remote-update.sh', 'idee-front/Dockerfile', 'idee-service/Dockerfile'}
+    required = {'AGENTS.md', 'deploy.sh', 'deploy/remote-update.sh', 'deploy/build-native.sh', 'deploy/run-service.py', 'deploy/install-services.py'}
     if not required <= names:
         raise SystemExit('Archive incomplète.')
 print('Archive vérifiée : sources uniquement, sans secrets ni base locale.')
@@ -104,7 +104,7 @@ idee_remote_started=true
 # Verify the public route as well as the local checks performed on the server.
 for idee_endpoint in / /api/health /api/categories; do
   if ! curl --fail --silent --show-error --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 10 --max-time 30 --output /dev/null "$idee_url$idee_endpoint"; then
-    printf 'Les conteneurs sont démarrés, mais la vérification publique a échoué : %s%s\nVérifiez Apache/HTTPS. Aucun retour arrière automatique.\n' "$idee_url" "$idee_endpoint" >&2
+    printf 'Les services sont démarrés, mais la vérification publique a échoué : %s%s\nVérifiez Apache/HTTPS. Aucun retour arrière automatique.\n' "$idee_url" "$idee_endpoint" >&2
     exit 1
   fi
 done

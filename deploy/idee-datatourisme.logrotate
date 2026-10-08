@@ -1,9 +1,0 @@
-/home/debian/idee/logs/datatourisme-cron.log {
-    daily
-    rotate 14
-    compress
-    missingok
-    notifempty
-    su debian debian
-    copytruncate
-}

@@ -58,6 +58,9 @@ public class OutingDescriptions {
             var sources=db.queryForList("SELECT description FROM idee_outing_description_source WHERE outing_id=? AND language='fr'",id);
             if (sources.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,"Description source francaise absente.");
             String source=(String)sources.getFirst().get("description");
+            var origins=db.queryForList("SELECT import_run_id FROM idee_outing_description_job WHERE outing_id=? AND source_description=?",id,source);
+            Object origin=origins.isEmpty()?null:origins.getFirst().get("import_run_id");
+            db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,origin==null?"":origin.toString());
             var saved=db.queryForList("""
                 SELECT description_longue,description_courte FROM idee_outing_description
                 WHERE outing_id=? AND language='fr' AND source_description=? AND model=? AND prompt_version=?

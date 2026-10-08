@@ -1,4 +1,0 @@
-# Server timezone: UTC. Daily at 04:00 UTC (06:00 Paris summer / 05:00 winter).
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-0 4 * * * debian /home/debian/idee/deploy/datatourisme-cron.sh >> /home/debian/idee/logs/datatourisme-cron.log 2>&1

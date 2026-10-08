@@ -28,13 +28,13 @@ Les listes et détails exposent `url` (français) et `urls` (adresses canoniques
 
 `GET /api/outing-by-path?path=...` résout le chemin complet, historique ou actuel, et retourne la fiche avec son URL courante. Un département ou une commune arbitraire ne suffit pas à retrouver une fiche. Les brouillons, archives et chemins non enregistrés retournent 404.
 
-Nginx transmet désormais les pages à Angular SSR. Le composant de fiche résout le chemin auprès de l’API et fixe le statut HTTP via `RESPONSE_INIT` : 301 pour une ancienne adresse, 404 pour une fiche introuvable et 503 lorsque l’API est indisponible. La page valide contient son contenu et sa canonique dès la réponse HTML. Voir [rendu serveur](server-rendering.md).
+Apache transmet désormais les pages à Angular SSR. Le composant de fiche résout le chemin auprès de l’API et fixe le statut HTTP via `RESPONSE_INIT` : 301 pour une ancienne adresse, 404 pour une fiche introuvable et 503 lorsque l’API est indisponible. La page valide contient son contenu et sa canonique dès la réponse HTML. Voir [rendu serveur](server-rendering.md).
 
-L’ancien endpoint `/api/public-page` reste en Java pour compatibilité mais n’est plus appelé par Nginx. Le serveur de développement Angular utilise également SSR après rechargement de sa configuration. Pendant la navigation côté navigateur, les anciennes adresses sont remplacées avec conservation des paramètres et de l’ancre. Les paramètres sont conservés dans les redirections HTTP 301 SSR ; les URL de partage et canoniques n’en contiennent pas.
+L’ancien endpoint `/api/public-page` reste en Java pour compatibilité mais n’est plus appelé par Apache. Le serveur de développement Angular utilise également SSR après rechargement de sa configuration. Pendant la navigation côté navigateur, les anciennes adresses sont remplacées avec conservation des paramètres et de l’ancre. Les paramètres sont conservés dans les redirections HTTP 301 SSR ; les URL de partage et canoniques n’en contiennent pas.
 
 ## Activation et vérification
 
-La migration s’applique au prochain démarrage de l’API mise à jour. Déployer frontend, API et configuration Nginx ensemble avec le mécanisme existant. La modification du code ne redémarre aucun serveur et ne déploie rien automatiquement.
+La migration s’applique au prochain démarrage de l’API mise à jour. Déployer frontend, API et configuration Apache ensemble avec le mécanisme existant. La modification du code ne redémarre aucun serveur et ne déploie rien automatiquement.
 
 Vérifications disponibles :
 

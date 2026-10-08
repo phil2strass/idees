@@ -21,7 +21,7 @@ export async function renderRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === "/_health") return new Response("ok");
   if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
-  // Nginx handles assets in production; this also supports the standalone Node preview.
+  // Serve compiled assets directly in both native production and standalone preview.
   if (url.pathname.startsWith("/assets/") || contentTypes[extname(url.pathname)]) {
     try {
       const file = resolve(browserFolder, "." + decodeURIComponent(url.pathname));

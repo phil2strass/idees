@@ -16,7 +16,7 @@ if private.exists():
             key, value = line.split('=', 1)
             if key.strip() in {'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'}:
                 env[key.strip()] = ' '.join(shlex.split(value))
-env.update(OPENAI_API_KEY='', OPENAI_TRANSLATIONS_ENABLED='false', MISTRAL_AUTO_ENABLED='false', MISTRAL_API_KEY='',
+env.update(IDEE_IMAGES_ENABLED='false', OPENAI_API_KEY='', OPENAI_TRANSLATIONS_ENABLED='false', MISTRAL_AUTO_ENABLED='false', MISTRAL_API_KEY='',
            DATATOURISME_ENABLED='false', DATATOURISME_API_KEY='', DB_CONTEXTS='production',
            PGPASSWORD=env.get('DB_PASSWORD', ''), IDEE_DATATOURISME_DB_TEST='isolated',
            IDEE_CALENDAR_SCRIPT=str(root / 'scripts/expand_calendar_json.py'))
@@ -24,7 +24,7 @@ psql = ['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-h', env.get('DB_HOST', 'localho
         '-p', env.get('DB_PORT', '5432'), '-U', env.get('DB_USER', 'htpweb'),
         '-d', env.get('DB_NAME', 'idee')]
 
-for test in ('OutingDescriptionWorkerDatabaseTest', 'DatatourismeDatabaseTest', 'OutingDescriptionsDatabaseTest', 'OutingTranslationsDatabaseTest', 'PublicUrlsDatabaseTest'):
+for test in ('OutingDescriptionWorkerDatabaseTest', 'DatatourismeDatabaseTest', 'OutingDescriptionsDatabaseTest', 'OutingTranslationsDatabaseTest', 'PublicUrlsDatabaseTest', 'OutingDatesDatabaseTest', 'ImportedImagesDatabaseTest'):
     schema = 'idee_datatourisme_test_' + uuid.uuid4().hex[:12]
     subprocess.run(psql + ['-c', 'CREATE SCHEMA ' + schema], env=env, check=True, capture_output=True)
     env.update(SPRING_DATASOURCE_URL='jdbc:postgresql://' + env.get('DB_HOST', 'localhost') + ':'
@@ -39,4 +39,4 @@ for test in ('OutingDescriptionWorkerDatabaseTest', 'DatatourismeDatabaseTest', 
         subprocess.run(psql + ['-c', 'DROP SCHEMA ' + schema + ' CASCADE'], env=env, check=True, capture_output=True)
     if result.returncode:
         raise SystemExit(result.returncode)
-print('Cinq schémas de recette supprimés ; aucun appel réel à OpenAI, Mistral ou DATAtourisme.')
+print('Schémas de recette supprimés ; aucun appel réel à OpenAI, Mistral ou DATAtourisme.')

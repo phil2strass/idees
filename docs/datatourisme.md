@@ -7,7 +7,7 @@ DATATOURISME_API_KEY=cle-fournie-par-datatourisme
 DATATOURISME_ENABLED=true
 ```
 
-Redémarrer le service après configuration (en production, recréer le conteneur API pour actualiser son environnement). Liquibase applique automatiquement les migrations 007 à 014 au démarrage. Le job démarre après 30 secondes puis traite une page par passage, avec un délai de 5 secondes entre passages.
+Redémarrer le service après configuration (en production, redémarrer le service systemd `idee-api` pour actualiser son environnement). Liquibase applique automatiquement les migrations 007 à 014 au démarrage. Le job démarre après 30 secondes puis traite une page par passage, avec un délai de 5 secondes entre passages.
 
 Le premier parcours n'utilise ni `start`, ni `end`, ni `update`. Chaque page demande 250 fiches, tous les champs (`fields=*`) et toutes les langues disponibles (`lang=*`). Le site continue d'afficher les textes français. La page suivante reprend exactement `meta.next` ; aucune pagination numérique n'est reconstruite. L'API réelle omet parfois `next` sur la dernière page : l'import accepte aussi cette forme lorsque les métadonnées confirment la dernière page ou un catalogue vide. La clé est envoyée dans `X-API-Key`, jamais dans l'URL. Les redirections HTTP sont refusées et les curseurs doivent rester sur l'origine DATAtourisme.
 
@@ -25,21 +25,21 @@ Suivi protégé par le Bearer `IDEE_IMPORT_TOKEN` existant : `GET /api/admin/dat
 
 ## Déclenchement manuel
 
-### Cron sur OVH
+### Import quotidien natif sur OVH
 
-La tâche `/etc/cron.d/idee-datatourisme` lance chaque jour à **04:00 UTC** (06:00 à Paris en été, 05:00 en hiver) `/home/debian/idee/deploy/datatourisme-cron.sh`. Cron est activé au démarrage du serveur. Le traitement utilise l'image dédiée `idee-datatourisme:cron`, le réseau `idee_default` et la base de production, sans redémarrer l'API du site. L'import intégré à l'API reste désactivé pour conserver une seule planification.
+Le timer systemd `idee-import.timer` lance chaque jour à **04:00 UTC** (06:00 à Paris en été, 05:00 en hiver) `idee-import.service`. Il utilise le JAR de `.runtime/current` et la base de production, sans redémarrer l’API du site. L’import intégré à l’API peut rester désactivé pour conserver une seule planification.
 
-Le mode `DATATOURISME_BATCH=true` démarre sans serveur HTTP, demande une synchronisation des deux départements, traite les pages avec les quotas et checkpoints habituels, puis ferme le contexte Java et sort. Après trois heures de traitement maximum, il sort en erreur en conservant la progression pour le prochain lancement. Un verrou `flock` et un nom de conteneur unique empêchent les exécutions concurrentes.
+Le mode `DATATOURISME_BATCH=true` démarre sans serveur HTTP, demande une synchronisation des deux départements, traite les pages avec les quotas et checkpoints habituels, puis ferme le contexte Java et sort. Après trois heures maximum, il sort en erreur en conservant sa progression. Le service oneshot évite les exécutions simultanées du même timer ; les verrous PostgreSQL coordonnent aussi les imports manuels et l’API.
 
-La configuration privée `deploy/.env.datatourisme` (0600) contient la clé DATAtourisme, le mot de passe de la base et la clé d'import. Elle est exclue des archives de sources. Si un secret de production change, actualiser aussi ce fichier. Les journaux sont dans `logs/datatourisme-cron.log`, avec rotation quotidienne et 14 archives compressées. L'état détaillé reste dans `idee_datatourisme_state`.
+La configuration privée est dans `deploy/.env`. Une clé DATAtourisme distincte peut être enregistrée dans `deploy/.env.datatourisme` (0600), seul son champ `DATATOURISME_API_KEY` est alors utilisé. Les secrets ne figurent pas dans les archives. Consulter les journaux avec `journalctl -u idee-import.service` et l’état détaillé dans `idee_datatourisme_state`.
 
 Lancer manuellement le même traitement sur le serveur :
 
 ```bash
-/home/debian/idee/deploy/datatourisme-cron.sh
+sudo systemctl start idee-import.service
 ```
 
-Le déploiement normal actualise l’image `idee-datatourisme:cron` à partir de la nouvelle image API. Une reconstruction manuelle avec le Dockerfile du service reste possible pour une mise à jour isolée du connecteur. Les fichiers d'installation sont conservés dans `deploy/` ; `install-datatourisme-cron.py` lit la clé via une entrée standard privée, jamais via les arguments. Ne pas afficher ni copier les fichiers d'environnement dans les journaux.
+Le lanceur de compatibilité `deploy/datatourisme-cron.sh` exécute également Java directement, avec un verrou `flock`. Il n’installe aucune tâche cron. `install-datatourisme-cron.py` lit la clé depuis une entrée JSON privée et active le timer natif. Voir [l’installation et les sauvegardes](../deploy/README.md).
 
 ### API protégée
 
@@ -63,13 +63,47 @@ Les demandes répétées ne remettent pas à zéro un parcours en cours. La dema
 
 Le suivi expose `enabled`, `nextRequestAt` (prochaine requête permise par le quota) et, par département, `sync_requested`, `running`, `started_at`, `completed_at`, `pages`, `objects` et `last_error`. Après une demande acceptée, attendre `sync_requested=false` et `running=false` pour les deux départements, avec une nouvelle date `completed_at` et sans erreur. Une réponse incrémentale vide ne provoque aucun archivage.
 
+### Historique des imports
+
+La migration 018 crée `idee_import_run`, avec une ligne par parcours et département (67/68). Les dates `started_at`, `last_processed_at` et `completed_at` sont des `timestamptz` : début du parcours, dernière page validée et fin de l’import. `state` vaut `running`, `retrying` après erreur, ou `completed`. `pages`, `objects` et `last_error` complètent le suivi. Une erreur dès la première page conserve le parcours, repris avec le même identifiant ; une page annulée ne modifie aucun compteur.
+
+| Colonne | Nombre de sorties distinctes par parcours |
+| --- | --- |
+| `new_outings` | Sorties créées |
+| `updated_outings` | Sorties existantes dont le contenu source JSON a changé, ou nouvellement archivées à la fin d’un parcours complet |
+| `mistral_outings` | Sorties avec une nouvelle demande de réécriture française mise en file |
+| `description_translation_outings` | Sorties avec une nouvelle demande de traduction des descriptions mise en file |
+| `title_translation_outings` | Sorties avec une nouvelle demande de traduction du titre mise en file |
+
+Les compteurs de traitement représentent les mises en file, pas les appels fournisseurs réussis. Ils se recoupent : une traduction complète compte pour les descriptions et pour le titre ; un titre seul compte uniquement pour le titre lorsque les descriptions traduites sont réutilisables. Les cinq langues comptent pour **une sortie**. Les demandes déjà en attente et les nouvelles tentatives d’une même demande ne sont pas recomptées. Une sortie créée puis revue pendant le même parcours reste uniquement dans `new_outings`. Un JSON source identique (indépendamment de l’ordre des propriétés) n’est pas une mise à jour.
+
+`idee_import_run_outing` conserve les contributions individuelles aux compteurs, même après suppression d’une sortie. L’origine de la demande Mistral est persistée jusque dans le batch ; les traductions déclenchées après sa collecte enrichissent le parcours d’origine, même si un autre import a eu lieu entre-temps. `completed_at` marque la fin de l’import, **pas la fin des traitements Mistral/OpenAI** : les compteurs de traduction peuvent encore augmenter ensuite. Les traitements manuels sans origine d’import restent hors de cet historique. Les anciens parcours terminés avant la migration ne sont pas reconstitués ; un parcours déjà en cours commence à être comptabilisé à sa prochaine page.
+
+Historique protégé par la clé d’import, du plus récent au plus ancien (`limit` : 1 à 200, défaut 50 ; `offset` : positif ou nul) :
+
+```bash
+curl --fail-with-body 'http://127.0.0.1:8087/api/admin/datatourisme/imports?limit=50&offset=0' \
+  -H "Authorization: Bearer ${IDEE_IMPORT_TOKEN}"
+```
+
+L’API expose les dates et compteurs en camelCase (`startedAt`, `completedAt`, `newOutings`, `updatedOutings`, `mistralOutings`, `descriptionTranslationOutings`, `titleTranslationOutings`). Pour lire les dates en heure de Paris directement en SQL :
+
+```sql
+SELECT started_at AT TIME ZONE 'Europe/Paris' AS debut,
+       completed_at AT TIME ZONE 'Europe/Paris' AS fin,
+       department, state, new_outings, updated_outings, mistral_outings,
+       description_translation_outings, title_translation_outings
+FROM idee_import_run
+ORDER BY started_at DESC;
+```
+
 ## Descriptions réécrites avec Mistral
 
 La migration 011 ajoute `idee_outing_description`, indexée par sortie et langue, avec `description_longue`, `description_courte` (contrainte PostgreSQL de 300 caractères), le texte source utilisé, le modèle et la date de génération. La vue `idee_outing_description_source` expose les descriptions DATAtourisme dans leurs langues d'origine ; les fiches hors DATAtourisme utilisent leur description existante en français.
 
-Les descriptions sources sont conservées intégralement. Les imports DATAtourisme continuent à actualiser leurs traductions sans écraser les textes générés. Si la source change, les anciens textes générés sont conservés mais ne sont plus affichés jusqu'à une nouvelle génération explicite.
+Les descriptions sources sont conservées intégralement. Les imports DATAtourisme continuent à actualiser leurs traductions sans écraser les textes générés. Si la source change, les anciens textes générés sont conservés mais ne sont plus affichés jusqu’à leur nouvelle génération automatique.
 
-Configurer `MISTRAL_API_KEY` dans le `.env` privé et `MISTRAL_MODEL=mistral-small-2603` ([Mistral Small 4](https://docs.mistral.ai/models/mistral-small-4-0-26-03)). La clé n'est jamais envoyée au navigateur. La génération automatique est intégrée à l’import et au cron DATAtourisme via une file persistante et des batches Mistral (migrations 013 et 014). Le traitement actuel génère uniquement du français ; le stockage accepte plusieurs langues.
+Configurer `MISTRAL_API_KEY` dans le `.env` privé et `MISTRAL_MODEL=mistral-small-2603` ([Mistral Small 4](https://docs.mistral.ai/models/mistral-small-4-0-26-03)). La clé n'est jamais envoyée au navigateur. La génération automatique est intégrée à l’import et au cron DATAtourisme via une file persistante et des batches Mistral (migrations 013 et 014). Mistral génère le français ; la migration 017 met ensuite automatiquement les traductions OpenAI en file dans les cinq langues du site. Un changement de titre seul relance la traduction du titre sans régénérer les descriptions à jour.
 
 Pour traiter exactement une sortie locale, sans démarrer de serveur HTTP ni lancer l'import DATAtourisme :
 
@@ -124,13 +158,36 @@ Le JSONB `idee_datatourisme_event.payload` conserve la réponse complète, y com
 
 Chaque table est rattachée au UUID source par clé étrangère ; les clés composées empêchent les doublons d'import. Des index ciblent les identifiants source, dates, contacts, thèmes et communes. Les collections d'une fiche sont remplacées dans la même transaction que sa mise à jour : une coordonnée retirée de la source ne subsiste pas en base structurée.
 
-Le producteur et l'éditeur d'une fiche ne sont pas automatiquement assimilés à l'organisateur. Un site web est projeté sur `idee_outing.website` depuis le contact général, sans assimiler une page d'accueil à un lien de réservation. La galerie reçoit les images HTTPS des deux collections de représentations, dédupliquées par URL ; une image principale explicite passe en premier. Sans type MIME, une extension d'image connue est requise pour l'affichage ; toute ressource non reconnue reste conservée en base. Les sources ne renseignant pas une licence restent sans licence explicite : aucune autorisation n'est inventée.
+Le producteur et l'éditeur d'une fiche ne sont pas automatiquement assimilés à l'organisateur. Un site web est projeté sur `idee_outing.website` depuis le contact général, sans assimiler une page d'accueil à un lien de réservation. La galerie reçoit les images HTTP/HTTPS des deux collections de représentations, dédupliquées par URL ; une image principale explicite passe en premier. Sans type MIME, une extension d'image connue est requise pour l'affichage ; toute ressource non reconnue reste conservée en base. Les sources ne renseignant pas une licence restent sans licence explicite : aucune autorisation n'est inventée.
 
 Source : https://api.datatourisme.fr/v1/docs . Ce connecteur couvre les fêtes et manifestations ; les lieux permanents, produits et itinéraires ne sont pas importés.
 
+## Images stockées sur le serveur
+
+La migration 019 crée la file persistante `idee_image_download` et y ajoute les images des sorties déjà importées. Chaque import ajoute ensuite les nouvelles URL à cette file dans la même transaction que la fiche. Un traitement dédié démarre après 30 secondes et télécharge jusqu'à dix images par passage, sans bloquer les imports ni les autres batches. Il fonctionne aussi lorsque l'import DATAtourisme est désactivé dans l'API : le processus d’import natif enregistre les demandes, l'API du site télécharge les fichiers.
+
+Après succès, le catalogue et les fiches exposent `/api/media/images/<titre-commune>-<empreinte-courte>.<extension>`. La migration 020 ajoute un registre par empreinte complète : les noms sont établis depuis le titre français et la commune de la première sortie associée, avec un suffixe de 16 caractères (empreinte complète en cas de collision). Ils restent stables après modification du titre, changement de langue ou réimport. Le contrôle automatique renomme aussi les fichiers déjà téléchargés, sans appel réseau ; les anciennes URL contenant uniquement l’empreinte redirigent en HTTP 301 vers le nouveau nom. Le renommage commence au premier contrôle, environ quinze secondes après le démarrage de l’API mise à jour, si le traitement images est activé. Les fichiers identiques sont partagés ; les URL source, textes alternatifs, crédits et licences restent conservés en base. Une URL déjà récupérée est réutilisée aux imports suivants ; une nouvelle URL est téléchargée. Un fichier modifié chez le fournisseur sans changement d'URL n'est pas automatiquement rafraîchi. Les images d'origine restent affichées tant que leur téléchargement n'a pas réussi.
+
+Configuration locale : `IDEE_IMAGES_ENABLED=true` (défaut), `IDEE_IMAGES_DIRECTORY=data/images` (chemin relatif au répertoire de lancement, ou absolu). En production, le lanceur natif fixe le dossier à `data/images/` à la racine du projet. Ce dossier est créé par l’utilisateur applicatif, exclu de Git et des archives de sources, sauvegardé séparément et conservé pendant les déploiements. Les fichiers téléchargés sont lisibles (0644). Le processus d’import ponctuel met les images en file ; le service API les télécharge. Aucun stockage externe au projet n’est nécessaire.
+
+Les erreurs sont réessayées avec un délai progressif de 5 minutes à 24 heures. Une réservation abandonnée après arrêt du service est reprise après dix minutes. Une vérification au démarrage puis toutes les heures remet en file les fichiers locaux disparus. Les téléchargements acceptent JPEG, PNG, GIF, WebP et AVIF (signature vérifiée), avec une limite de 20 Mio et 45 secondes par requête. Les SVG restent sur leur lien source. Les redirections sont limitées et leur destination est vérifiée ; les adresses réseau privées sont refusées.
+
+Suivi protégé avec le même token d'import :
+
+Pour mettre en téléchargement toutes les images existantes et suivre le passage jusqu'à sa fin, lancer `./download-images.sh` à la racine du projet. Le script charge la clé depuis `.env` (ou `deploy/.env` sur le serveur), appelle `POST /api/admin/images/download-all-missing`, puis affiche les compteurs toutes les cinq secondes. L'API doit être reconstruite/redémarrée avec cette route et `IDEE_IMAGES_ENABLED=true`. Les fichiers déjà présents sont conservés, les échecs sont remis en attente immédiatement et les téléchargements en cours ne sont pas réinitialisés. `IDEE_API_BASE_URL` permet de viser une autre adresse API.
+
+Options : `./download-images.sh --status` affiche un instantané ; `./download-images.sh --watch` suit la progression toutes les cinq secondes jusqu’à la fin du passage, sans relancer les téléchargements ; `--no-wait` met en file et rend immédiatement la main. Le suivi indique le nombre de fichiers téléchargés sur le total et le pourcentage de progression. Ctrl+C arrête seulement le suivi. Le script sort avec le code 0 lorsque toute la file est téléchargée, 2 si le passage est terminé avec des erreurs (les reprises automatiques continuent), 1 en cas d'erreur de lancement ou d'accès et 3 si le suivi détecte un téléchargeur désactivé. Il n'attend pas les reprises différées pendant des heures.
+
+```bash
+curl --fail-with-body http://127.0.0.1:8087/api/admin/images/status \
+  -H "Authorization: Bearer $IDEE_IMPORT_TOKEN"
+```
+
+La réponse contient `enabled`, les compteurs `counts` par état (`pending`, `downloading`, `ready`, `retrying`) et les vingt erreurs récentes (`recentErrors`). Les tests `ImportedImagesTest` et `ImportedImagesDatabaseTest` couvrent téléchargement HTTP simulé, redirections, limite de taille, adresses privées, reprises, réimport, rollback, fichiers disparus et conservation des crédits. La recette PostgreSQL est intégrée à `scripts/check_description_jobs.py`.
+
 ## Vérification
 
-La page `/sorties/{slug}` utilise les informations structurées : présentation dans les langues disponibles, thèmes et langues d'accueil, contacts par rôle avec liens téléphone/courriel/web, lieux supplémentaires, documents et provenance (producteur, éditeur, dates et référence source). Les images et leurs crédits restent dans la galerie. Les sections vides sont masquées ; les producteurs/éditeurs ne sont pas présentés comme organisateurs. Les informations de provenance sont repliables.
+La page `/sorties/{slug}` utilise les informations structurées : présentation dans les langues disponibles, thèmes et langues d'accueil, contacts par rôle avec liens téléphone/courriel/web, lieux supplémentaires et documents. Les images et leurs crédits restent dans la galerie. Les sections vides sont masquées ; les producteurs/éditeurs ne sont pas présentés comme organisateurs. Une mention discrète en bas de fiche indique les producteurs d'origine, DATAtourisme, la Licence Ouverte 2.0 et la date de dernière mise à jour de la source (`updatedOn`, ou `updatedAt` à défaut). Elle précise que les textes ont été adaptés et éventuellement traduits pour le site. Les libellés et la date suivent la langue choisie ; aucune date n'est inventée si la source n'en fournit pas. L'ancien bloc « À propos de cette fiche » reste supprimé.
 
 L'API de détail `GET /api/outings/{slug}` expose `sourceDetails` (ou `null` pour une fiche sans source DATAtourisme), avec `translations`, `contacts` et leurs `channels`, `terms`, `locations`, `resources` non-images, `reference`, `createdOn`, `updatedOn`, `updatedAt`. Le JSON brut et les checkpoints ne sont pas exposés ; l'API de liste reste inchangée.
 
@@ -157,3 +214,5 @@ python3 scripts/batch_descriptions.py --batch-id IDENTIFIANT_LOCAL_DU_BATCH --wa
 ```
 
 Sans `--wait`, le lanceur affiche l’état et termine après un seul passage. Sans `--background`, il reste attaché au terminal. Une sauvegarde est recommandée avant le premier lancement si des migrations sont en attente.
+
+Les images partagées entre les versions linguistiques gardent une URL commune. Le texte alternatif est localisé lorsqu’il reprend le titre de la sortie ; un libellé spécifique de photo reste conservé. Le nom de fichier est un indice SEO léger, le texte alternatif et le contexte de la page sont plus importants ; voir [les recommandations Google Images](https://developers.google.com/search/docs/appearance/google-images).

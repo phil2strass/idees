@@ -64,6 +64,7 @@ public class DatatourismeImporter {
     public void tick() {
         if (!enabled || key.isBlank()) return;
         String[] department = {null};
+        UUID[] currentRun = {null};
         try {
             transaction.executeWithoutResult(status -> {
                 if (!Boolean.TRUE.equals(db.queryForObject("SELECT pg_try_advisory_xact_lock(67468007)",Boolean.class))) return;
@@ -83,29 +84,59 @@ public class DatatourismeImporter {
                     // Watermark is the previous run START, with two days of overlap.
                     LocalDate update=full?null:instant(state.get("started_at")).atZone(ZoneOffset.UTC).toLocalDate().minusDays(2);
                     url=firstUrl(dep,update);
-                    db.update("UPDATE idee_datatourisme_state SET next_url=?,run_id=?,mode=?,started_at=now(),pages=0,objects=0,last_error=NULL,selection_version=?,sync_requested=false WHERE department=?",
-                            url,UUID.randomUUID(),full?"full":"update",SELECTION_VERSION,dep);
+                    String initialUrl=url;
+                    UUID newRun=UUID.randomUUID();
+                    // Persist the start even if the first page fails; its retry keeps this run ID.
+                    independent.executeWithoutResult(s -> {
+                        db.update("INSERT INTO idee_import_run(id,department,mode) VALUES(?,?,?)",newRun,dep,full?"full":"update");
+                        db.update("UPDATE idee_datatourisme_state SET next_url=?,run_id=?,mode=?,started_at=now(),pages=0,objects=0,last_error=NULL,selection_version=?,sync_requested=false WHERE department=?",
+                            initialUrl,newRun,full?"full":"update",SELECTION_VERSION,dep);
+                    });
                 }
+                UUID run=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department=?",UUID.class,dep);
+                currentRun[0]=run;
+                // Also resume a traversal that started before the history migration.
+                independent.executeWithoutResult(s -> db.update("""
+                    INSERT INTO idee_import_run(id,department,mode,started_at)
+                    SELECT run_id,department,mode,started_at FROM idee_datatourisme_state WHERE department=?
+                    ON CONFLICT(id) DO NOTHING
+                    """,dep));
+                db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,run.toString());
                 URI uri=trustedUrl(url);
                 // Commit the reservation even if HTTP or the page transaction fails.
                 independent.executeWithoutResult(s -> db.update("UPDATE idee_datatourisme_quota SET next_request_at=now()+interval '4 seconds' WHERE singleton"));
                 JsonNode page=fetch(uri);
                 String next=nextUrl(page);
                 if (url.equals(next)) throw new IllegalArgumentException("Repeated cursor");
-                UUID run=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department=?",UUID.class,dep);
                 List<Long> changed=new ArrayList<>();
-                for (JsonNode event:page.get("objects")) changed.add(mapper.upsert(event,dep,run));
+                for (JsonNode event:page.get("objects")) {
+                    var previous=db.queryForList("""
+                        SELECT o.id,e.payload IS DISTINCT FROM ?::jsonb AS changed
+                        FROM idee_outing o LEFT JOIN idee_datatourisme_event e ON e.outing_id=o.id
+                        WHERE o.source_name='datatourisme' AND o.external_id=?
+                        """,event.toString(),event.path("uuid").asText());
+                    long outing=mapper.upsert(event,dep,run);
+                    boolean created=previous.isEmpty(),updated=!created && Boolean.TRUE.equals(previous.getFirst().get("changed"));
+                    recordOuting(run,outing,created,updated);
+                    changed.add(outing);
+                }
                 mapper.project(changed);
                 db.update("UPDATE idee_datatourisme_state SET next_url=?,pages=pages+1,objects=objects+?,last_error=NULL WHERE department=?",next,page.get("objects").size(),dep);
+                db.update("""
+                    UPDATE idee_import_run SET pages=pages+1,objects=objects+?,last_processed_at=now(),
+                      last_error=NULL,state=?,completed_at=CASE WHEN ? THEN now() ELSE NULL END WHERE id=?
+                    """,page.get("objects").size(),next==null?"completed":"running",next==null,run);
                 if (next==null) {
                     String mode=db.queryForObject("SELECT mode FROM idee_datatourisme_state WHERE department=?",String.class,dep);
                     if ("full".equals(mode)) {
                         db.update("UPDATE idee_datatourisme_presence SET active=false WHERE department=? AND seen_run<>?",dep,run);
-                        db.update("""
+                        var archived=db.queryForList("""
                             UPDATE idee_outing o SET status='archived',updated_at=now()
                             FROM idee_datatourisme_event e WHERE e.outing_id=o.id
                             AND NOT EXISTS(SELECT 1 FROM idee_datatourisme_presence p WHERE p.uuid=e.uuid AND p.active)
+                            AND o.status<>'archived' RETURNING o.id
                             """);
+                        for(var outing:archived) recordOuting(run,((Number)outing.get("id")).longValue(),false,true);
                     }
                     db.update("UPDATE idee_datatourisme_state SET completed_at=now(),full_completed_at=CASE WHEN mode='full' THEN now() ELSE full_completed_at END WHERE department=?",dep);
                 }
@@ -118,9 +149,20 @@ public class DatatourismeImporter {
             independent.executeWithoutResult(s -> {
                 db.update("UPDATE idee_datatourisme_quota SET next_request_at=now()+(? * interval '1 second') WHERE singleton",delay);
                 if (department[0]!=null) db.update("UPDATE idee_datatourisme_state SET last_error=? WHERE department=?",message,department[0]);
+                if (currentRun[0]!=null) db.update("UPDATE idee_import_run SET state='retrying',last_error=? WHERE id=?",message,currentRun[0]);
             });
             LoggerFactory.getLogger(getClass()).warn("DATAtourisme : {}, reprise dans {} secondes",message,delay);
         }
+    }
+
+    private void recordOuting(UUID run,long outing,boolean created,boolean updated) {
+        db.update("""
+            INSERT INTO idee_import_run_outing(run_id,outing_id,new_outing,updated_outing) VALUES(?,?,?,?)
+            ON CONFLICT(run_id,outing_id) DO UPDATE SET
+              new_outing=idee_import_run_outing.new_outing OR excluded.new_outing,
+              updated_outing=(idee_import_run_outing.updated_outing OR excluded.updated_outing)
+                AND NOT (idee_import_run_outing.new_outing OR excluded.new_outing)
+            """,run,outing,created,updated);
     }
 
     JsonNode fetch(URI uri) {

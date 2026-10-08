@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,11 +24,18 @@ class OutingTranslationsDatabaseTest {
         safe=db.queryForObject("SELECT current_schema()",String.class).startsWith("idee_datatourisme_test_"); assertTrue(safe);
     }
     @AfterEach void cleanup() {
-        if(safe) { db.update("DELETE FROM idee_outing WHERE slug LIKE 'translation-%'"); db.update("DELETE FROM idee_translation_batch"); }
+        if(safe) new TransactionTemplate(manager).executeWithoutResult(status -> {
+            db.update("DELETE FROM idee_datatourisme_event WHERE outing_id IN (SELECT id FROM idee_outing WHERE slug LIKE 'translation-%')");
+            db.update("DELETE FROM idee_outing WHERE slug LIKE 'translation-%'");
+            db.update("DELETE FROM idee_translation_batch"); db.update("DELETE FROM idee_description_batch");
+        });
     }
     long outing(String slug) {
         long id=db.queryForObject("INSERT INTO idee_outing(slug,title,summary,description,kind,status) VALUES(?,'Exposition Wurth','Résumé','Source française','event','published') RETURNING id",Long.class,slug);
         db.update("INSERT INTO idee_outing_description(outing_id,language,source_description,description_longue,description_courte,model,prompt_version) VALUES(?,'fr','Source française','Présentation française','Résumé français','test',1)",id);
+        // Simulate an existing outing from before automatic translation, for backfill tests.
+        db.update("DELETE FROM idee_outing_translation_job WHERE outing_id=?",id);
+        db.update("DELETE FROM idee_outing_description_job WHERE outing_id=?",id);
         return id;
     }
     OutingTranslationWorker worker(OpenAiTranslations client) { return new OutingTranslationWorker(db,client,manager,true); }
@@ -56,6 +64,7 @@ class OutingTranslationsDatabaseTest {
                     var content=Map.of("title",lang+" "+source.path("title").asText(),
                         "description_longue",lang+" "+source.path("description_longue").asText(),
                         "description_courte",invalid.contains(lang)?"a".repeat(301):lang+" "+source.path("description_courte").asText());
+                    if(source.size()==1) content=Map.of("title",lang+" "+source.path("title").asText());
                     result.add(json.valueToTree(Map.of("custom_id",custom,"response",Map.of("status_code",failing.contains(lang)?500:200,
                         "body",Map.of("choices",List.of(Map.of("finish_reason","stop","message",Map.of("content",json.writeValueAsString(content)))))))));
                 }
@@ -77,7 +86,7 @@ class OutingTranslationsDatabaseTest {
         var client=new Fake(); var worker=worker(client);
         assertFalse(worker.processNext()); assertEquals(0,client.posts.get()); assertEquals(0,count("idee_outing_translation_job"));
         var accepted=worker.enqueueMissing(1);
-        assertEquals(1L,accepted.get("accepted")); assertEquals(5,accepted.get("requests")); assertEquals(0,client.uploads);
+        assertEquals(1L,accepted.get("accepted")); assertEquals(5L,accepted.get("requests")); assertEquals(0,client.uploads);
         assertTrue(worker.processNext()); assertEquals(1,client.posts.get());
         due(); assertTrue(worker(newWorkerClient(client)).processNext());
         var translations=new OutingDescriptions(db,null,manager).translationsForOuting(first);
@@ -180,7 +189,7 @@ class OutingTranslationsDatabaseTest {
         assertEquals(5,new OutingDescriptions(db,null,manager).translationsForOuting(id).size());
         db.update("UPDATE idee_outing_description SET description_longue='Présentation modifiée' WHERE outing_id=?",id);
         assertEquals(0,new OutingDescriptions(db,null,manager).translationsForOuting(id).size());
-        assertEquals(0,count("idee_outing_translation_job"),"A French edit alone must not launch translation");
+        assertEquals(5,count("idee_outing_translation_job"),"A French edit automatically queues translation");
         worker.enqueueMissing(1); assertTrue(worker.processNext()); due(); assertTrue(worker.processNext());
         assertEquals("en Présentation modifiée",db.queryForObject("SELECT description_longue FROM idee_outing_translation WHERE outing_id=? AND language='en'",String.class,id));
         db.update("UPDATE idee_outing SET description='Nouvelle source brute' WHERE id=?",id);
@@ -193,6 +202,7 @@ class OutingTranslationsDatabaseTest {
         due(); assertTrue(worker.processNext());
         assertEquals(3,count("idee_outing_translation")); assertEquals(2,count("idee_outing_translation_job"));
         var before=db.queryForList("SELECT language,attempts,next_attempt_at FROM idee_outing_translation_job ORDER BY language");
+        db.update("UPDATE idee_outing SET title=title,summary='Résumé sans changement de source' WHERE slug='translation-errors'");
         assertEquals(0L,worker.enqueueMissing(500).get("accepted"));
         assertEquals(before,db.queryForList("SELECT language,attempts,next_attempt_at FROM idee_outing_translation_job ORDER BY language"));
         assertFalse(worker.processNext());
@@ -233,10 +243,133 @@ class OutingTranslationsDatabaseTest {
             INSERT INTO idee_outing_description(outing_id,language,source_description,description_longue,description_courte,model,prompt_version)
             SELECT id,'fr','Source','Texte','Court','test',1 FROM idee_outing WHERE slug LIKE 'translation-bulk-%'
             """);
+        db.update("DELETE FROM idee_outing_translation_job"); // Simulate a pre-migration catalogue.
         assertEquals(0,count("idee_outing_translation_job"));
         assertEquals(500L,worker.enqueueMissing(500).get("accepted")); assertEquals(2500,count("idee_outing_translation_job"));
         assertEquals(1L,worker.enqueueMissing(500).get("accepted")); assertEquals(2505,count("idee_outing_translation_job"));
         assertEquals(0L,worker.enqueueMissing(500).get("accepted"));
+    }
+    @Test void allMissingQueuesMoreThan500OutingsAndSkipsCurrentAndPendingLanguages() {
+        long current=outing("translation-all-current"),pending=outing("translation-all-pending");
+        translate(current,"en","Current title");
+        db.queryForList("SELECT idee_queue_outing_translation(?,'de')",pending);
+        db.update("UPDATE idee_outing_translation_job SET attempts=2,next_attempt_at=now()+interval '1 hour' WHERE outing_id=?",pending);
+        var before=db.queryForMap("SELECT * FROM idee_outing_translation_job WHERE outing_id=?",pending);
+        db.update("""
+            INSERT INTO idee_outing(slug,title,summary,description,kind,status)
+            SELECT 'translation-all-'||n,'Titre','Résumé','Source','event','published' FROM generate_series(1,501) n
+            """);
+        db.update("""
+            INSERT INTO idee_outing_description(outing_id,language,source_description,description_longue,description_courte,model,prompt_version)
+            SELECT id,'fr','Source','Texte','Court','test',1 FROM idee_outing WHERE slug ~ '^translation-all-[0-9]+$'
+            """);
+        db.update("DELETE FROM idee_outing_translation_job WHERE outing_id<>? OR language<>'de'",pending);
+        var client=new Fake(); var worker=worker(client);
+        var result=worker.enqueueAllMissing();
+        assertEquals("all",result.get("scope")); assertEquals(503L,result.get("accepted"));
+        assertEquals(2513L,result.get("requests")); assertEquals(2514,count("idee_outing_translation_job"));
+        assertEquals(before,db.queryForMap("SELECT * FROM idee_outing_translation_job WHERE outing_id=? AND language='de'",pending));
+        assertEquals(0L,worker.enqueueAllMissing().get("accepted"));
+        assertEquals(0,client.uploads); assertEquals(0,client.posts.get());
+        assertThrows(ResponseStatusException.class,()->worker(new OpenAiTranslations(new ObjectMapper(),"","test")).enqueueAllMissing());
+    }
+    @Test void automaticPipelineWaitsForMistralThenTranslatesAndPreservesIdenticalImports() {
+        var json=new ObjectMapper(); var remotes=new HashMap<String,JsonNode>();
+        var mistral=new MistralDescriptions(json,"fake","test") {
+            @Override public JsonNode createBatch(String payload) {
+                try {
+                    var request=json.readTree(payload); String remote=UUID.randomUUID().toString();
+                    var outputs=new ArrayList<Object>();
+                    for(var item:request.path("requests")) {
+                        String source=item.path("body").path("messages").path(1).path("content").asText();
+                        var content=json.writeValueAsString(Map.of("description_longue","Long "+source,"description_courte","Court "+source));
+                        outputs.add(Map.of("custom_id",item.path("custom_id").asText(),"response",Map.of("status_code",200,
+                            "body",Map.of("choices",List.of(Map.of("finish_reason","stop","message",Map.of("content",content)))))));
+                    }
+                    var result=json.valueToTree(Map.of("id",remote,"status","SUCCESS","outputs",outputs));
+                    remotes.put(remote,result); return result;
+                } catch(Exception error) { throw new IllegalStateException(error); }
+            }
+            @Override public JsonNode getBatch(String id) { return remotes.get(id); }
+        };
+        var descriptions=new OutingDescriptionWorker(db,new OutingDescriptions(db,mistral,manager),mistral,manager,true);
+        var client=new Fake(); var translations=worker(client);
+        UUID uuid=UUID.randomUUID(),run=UUID.randomUUID(); var tx=new TransactionTemplate(manager);
+        db.update("INSERT INTO idee_import_run(id,department,mode) VALUES(?,'67','update')",run);
+        long id=tx.execute(status -> {
+            db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,run.toString());
+            long outing=db.queryForObject("INSERT INTO idee_outing(slug,title,summary,description,kind,status) VALUES('translation-pipeline','Titre','Résumé','Brut','event','published') RETURNING id",Long.class);
+            db.update("INSERT INTO idee_datatourisme_event(uuid,outing_id,payload) VALUES(?,?,?::jsonb)",uuid,outing,"{}");
+            db.update("INSERT INTO idee_datatourisme_translation(uuid,language,description) VALUES(?,'fr','Source importée')",uuid);
+            db.update("INSERT INTO idee_import_run_outing(run_id,outing_id,new_outing,updated_outing) VALUES(?,?,true,false)",run,outing);
+            return outing;
+        });
+        assertEquals(1L,db.queryForObject("SELECT mistral_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertEquals(1,count("idee_outing_description_job")); assertEquals(0,count("idee_outing_translation_job"));
+        UUID replay=UUID.randomUUID();
+        tx.executeWithoutResult(status -> {
+            db.update("INSERT INTO idee_import_run(id,department,mode) VALUES(?,'67','update')",replay);
+            db.update("INSERT INTO idee_import_run_outing(run_id,outing_id,new_outing,updated_outing) VALUES(?,?,false,false)",replay,id);
+            db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,replay.toString());
+            db.update("UPDATE idee_outing SET title=title WHERE id=?",id);
+        });
+        assertEquals(0L,db.queryForObject("SELECT mistral_outings FROM idee_import_run WHERE id=?",Long.class,replay));
+        assertEquals(run,db.queryForObject("SELECT import_run_id FROM idee_outing_description_job WHERE outing_id=?",UUID.class,id));
+        assertFalse(translations.processNext()); assertTrue(descriptions.processNext());
+        assertEquals(0,count("idee_outing_translation_job"));
+        db.update("UPDATE idee_description_batch SET next_poll_at=now()"); assertTrue(descriptions.processNext());
+        assertEquals(5,count("idee_outing_translation_job"));
+        assertEquals(1L,db.queryForObject("SELECT description_translation_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertEquals(1L,db.queryForObject("SELECT title_translation_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertTrue(translations.processNext()); due(); assertTrue(translations.processNext());
+        tx.executeWithoutResult(status -> {
+            db.update("DELETE FROM idee_datatourisme_translation WHERE uuid=?",uuid);
+            db.update("INSERT INTO idee_datatourisme_translation(uuid,language,description) VALUES(?,'fr','Source importée')",uuid);
+            db.update("UPDATE idee_outing SET title=title WHERE id=?",id);
+        });
+        assertEquals(0,count("idee_outing_description_job")); assertEquals(0,count("idee_outing_translation_job"));
+        tx.executeWithoutResult(status -> {
+            db.update("UPDATE idee_outing SET title='Titre et texte corrigés' WHERE id=?",id);
+            db.update("UPDATE idee_datatourisme_translation SET description='Source modifiée' WHERE uuid=?",uuid);
+        });
+        assertEquals(1,count("idee_outing_description_job")); assertEquals(0,count("idee_outing_translation_job"));
+        assertTrue(descriptions.processNext()); db.update("UPDATE idee_description_batch SET next_poll_at=now()"); assertTrue(descriptions.processNext());
+        assertEquals(5,count("idee_outing_translation_job"));
+        assertTrue(translations.processNext());
+        assertTrue(client.input.contains("description_longue")); due(); assertTrue(translations.processNext());
+        assertEquals("en Long Source modifiée",db.queryForObject("SELECT description_longue FROM idee_outing_translation WHERE outing_id=? AND language='en'",String.class,id));
+        tx.executeWithoutResult(status -> { db.update("UPDATE idee_outing SET title='Annulé' WHERE id=?",id); status.setRollbackOnly(); });
+        assertEquals(0,count("idee_outing_translation_job"));
+    }
+    @Test void automaticTitleChangesReuseDescriptionsAndDoNotQueueMistral() throws Exception {
+        long id=outing("translation-title-only"); var client=new Fake(); var worker=worker(client);
+        db.queryForList("SELECT idee_queue_outing_translations(?)",id);
+        assertTrue(worker.processNext()); due(); assertTrue(worker.processNext());
+        var before=db.queryForList("SELECT language,description_longue,description_courte FROM idee_outing_translation ORDER BY language");
+        UUID run=UUID.randomUUID();
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            db.update("INSERT INTO idee_import_run(id,department,mode) VALUES(?,'67','update')",run);
+            db.update("INSERT INTO idee_import_run_outing(run_id,outing_id,new_outing,updated_outing) VALUES(?,?,false,true)",run,id);
+            db.queryForObject("SELECT set_config('idee.import_run_id',?,true)",String.class,run.toString());
+            db.update("UPDATE idee_outing SET title='Titre corrigé' WHERE id=?",id);
+        });
+        assertEquals(0L,db.queryForObject("SELECT mistral_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertEquals(0L,db.queryForObject("SELECT description_translation_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertEquals(1L,db.queryForObject("SELECT title_translation_outings FROM idee_import_run WHERE id=?",Long.class,run));
+        assertEquals(0,count("idee_outing_description_job"));
+        assertEquals(5,count("idee_outing_translation_job"));
+        assertTrue(worker.processNext());
+        for(String line:client.input.split("\\R")) {
+            var request=client.json.readTree(line);
+            var source=client.json.readTree(request.path("body").path("messages").path(1).path("content").asText());
+            assertEquals(Set.of("title"),new HashSet<>(source.properties().stream().map(Map.Entry::getKey).toList()));
+            assertEquals("Titre corrigé",source.path("title").asText());
+        }
+        due(); assertTrue(worker(client).processNext()); // Resuming with persisted reused descriptions.
+        assertEquals(before,db.queryForList("SELECT language,description_longue,description_courte FROM idee_outing_translation ORDER BY language"));
+        assertEquals("en Titre corrigé",db.queryForObject("SELECT title FROM idee_outing_translation WHERE outing_id=? AND language='en'",String.class,id));
+        db.update("UPDATE idee_outing SET summary='Résumé corrigé',title=title WHERE id=?",id);
+        assertEquals(0,count("idee_outing_translation_job")); assertFalse(worker.processNext());
     }
     @Test void concurrentWorkersSubmitOnceWithoutBlockingTitleUpdates() throws Exception {
         long id=outing("translation-concurrent");

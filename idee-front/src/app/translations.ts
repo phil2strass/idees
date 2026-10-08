@@ -1,5 +1,21 @@
 // UI translations: French keys, then English, German, Italian, Dutch and Spanish.
 export const TRANSLATIONS: Record<string, readonly string[]> = {
+  "Agrandir l’image": ["Enlarge image", "Bild vergrößern", "Ingrandisci immagine", "Afbeelding vergroten", "Ampliar imagen"],
+  "Image agrandie": ["Enlarged image", "Vergrößertes Bild", "Immagine ingrandita", "Vergrote afbeelding", "Imagen ampliada"],
+  "Fermer l’image": ["Close image", "Bild schließen", "Chiudi immagine", "Afbeelding sluiten", "Cerrar imagen"],
+  "Données d’origine :": ["Original data:", "Originaldaten:", "Dati originali:", "Oorspronkelijke gegevens:", "Datos originales:"],
+  "Collectif de producteurs touristiques": ["Tourism data contributors", "Touristische Datenanbieter", "Produttori di dati turistici", "Producenten van toeristische gegevens", "Productores de datos turísticos"],
+  "via": ["via", "über", "tramite", "via", "a través de"],
+  "Licence Ouverte 2.0": ["Open Licence 2.0", "Offene Lizenz 2.0", "Licenza Aperta 2.0", "Open Licentie 2.0", "Licencia Abierta 2.0"],
+  "Dernière mise à jour de la source :": ["Source last updated:", "Letzte Aktualisierung der Quelle:", "Ultimo aggiornamento della fonte:", "Bron laatst bijgewerkt:", "Última actualización de la fuente:"],
+  "Textes adaptés et, selon la langue, traduits pour ce site.": ["Texts adapted and, depending on the language, translated for this website.", "Texte für diese Website angepasst und je nach Sprache übersetzt.", "Testi adattati e, a seconda della lingua, tradotti per questo sito.", "Teksten aangepast en, afhankelijk van de taal, vertaald voor deze website.", "Textos adaptados y, según el idioma, traducidos para este sitio."],
+  "Horaires du {date}": ["Times for {date}", "Uhrzeiten am {date}", "Orari del {date}", "Tijden op {date}", "Horarios del {date}"],
+  "Revenir à cette semaine": ["Back to this week", "Zurück zu dieser Woche", "Torna a questa settimana", "Terug naar deze week", "Volver a esta semana"],
+  "Voir toutes les dates dans le calendrier": ["View all dates in the calendar", "Alle Termine im Kalender ansehen", "Vedi tutte le date nel calendario", "Bekijk alle datums in de kalender", "Ver todas las fechas en el calendario"],
+  "Calendrier des dates disponibles": ["Calendar of available dates", "Kalender der verfügbaren Termine", "Calendario delle date disponibili", "Kalender met beschikbare datums", "Calendario de fechas disponibles"],
+  "Choisissez une date pour voir les horaires.": ["Choose a date to see the times.", "Wählen Sie ein Datum, um die Uhrzeiten zu sehen.", "Scegli una data per vedere gli orari.", "Kies een datum om de tijden te zien.", "Elige una fecha para ver los horarios."],
+  "Dates disponibles": ["Available dates", "Verfügbare Termine", "Date disponibili", "Beschikbare datums", "Fechas disponibles"],
+  "Aucune date prévue cette semaine. Consultez le calendrier pour les prochaines dates.": ["No dates scheduled this week. Check the calendar for upcoming dates.", "Diese Woche sind keine Termine geplant. Weitere Termine finden Sie im Kalender.", "Nessuna data prevista questa settimana. Consulta il calendario per le prossime date.", "Deze week zijn er geen datums gepland. Bekijk de kalender voor komende datums.", "No hay fechas previstas esta semana. Consulta el calendario para las próximas fechas."],
   "Aller au contenu": [
     "Skip to content",
     "Zum Inhalt",

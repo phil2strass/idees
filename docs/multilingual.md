@@ -14,6 +14,8 @@ Les traductions déjà présentes sont reprises par la migration ; les suivantes
 
 `idee-front/src/app/translations.ts` contient les libellés de l’interface, avec les clés françaises et les cinq traductions. `LanguageService` centralise la langue, les liens, les paramètres des messages et le choix des contenus. Les dates, heures, montants, noms de langues et le calendrier Material suivent la langue sélectionnée. Les dates restent calculées dans le fuseau de la sortie ; les filtres utilisent les mêmes valeurs métier dans toutes les langues.
 
+La bannière propose six petits drapeaux SVG locaux, dans une capsule arrondie. La langue active est mise en évidence ; chaque bouton conserve le nom natif de la langue au survol et pour les lecteurs d’écran, avec navigation au clavier. Sur mobile, les drapeaux restent accessibles sous la navigation.
+
 Les vignettes et fiches affichent le titre et les descriptions générées par OpenAI Batch lorsqu’ils sont disponibles et à jour. Sans traduction enregistrée, le contenu français reste affiché et porte `lang="fr"`. Le changement de langue ne crée aucun traitement payant.
 
 Les autres données fournies par la source (consignes pratiques, conditions tarifaires, notes, noms de lieux, textes des documents, etc.) restent dans leur langue d’origine : le batch actuel couvre le titre et les deux descriptions uniquement.
@@ -28,10 +30,14 @@ Il faut mettre à jour l’API et le frontend ensemble pour afficher les traduct
 
 ## Vérification
 
+Sur les fiches avec plus de quatre séances, la section dates affiche la semaine en cours, du lundi au dimanche, y compris les séances déjà terminées cette semaine. Un lien ouvre le calendrier des dates connues : choisir un jour affiche tous ses horaires, avec les éventuelles annulations. Les fiches avec quatre séances ou moins conservent la liste complète. Le calcul des jours respecte le fuseau horaire de la sortie et les libellés suivent la langue choisie.
+
 Après `npm --prefix idee-front run build` :
 
 ```bash
 node tests/test_ssr.mjs
+node tests/test_outing_calendar.mjs
+IDEE_PLAYWRIGHT_MODULE=/chemin/vers/playwright node tests/test_outing_calendar_browser.mjs
 IDEE_PLAYWRIGHT_MODULE=/chemin/vers/playwright node tests/test_languages.cjs
 ```
 

@@ -36,6 +36,17 @@ class OpenAiTranslationsTest {
         }
         assertThrows(IllegalArgumentException.class,()->client.request(12L,"fr",source));
     }
+    @Test void titleOnlyRequestsExcludeDescriptionsAndReuseTheirPersistedTranslations() throws Exception {
+        var source=json.valueToTree(Map.of("title","Titre corrigé","description_longue","Français long","description_courte","Français court"));
+        var request=json.valueToTree(client.request(12L,"en",source,true));
+        assertEquals(json.readTree("{\"title\":\"Titre corrigé\"}"),json.readTree(request.path("body").path("messages").path(1).path("content").asText()));
+        assertEquals(json.readTree("[\"title\"]"),request.path("body").path("response_format").path("json_schema").path("schema").path("required"));
+        var body=json.valueToTree(Map.of("choices",List.of(Map.of("finish_reason","stop","message",Map.of("content","{\"title\":\"Updated title\"}")))));
+        var texts=client.parse(body,"{\"description_longue\":\"Saved long text\",\"description_courte\":\"Saved short text\"}");
+        assertEquals(new OpenAiTranslations.Texts("Updated title","Saved long text","Saved short text"),texts);
+        assertThrows(IllegalArgumentException.class,()->client.parse(body));
+        assertThrows(IllegalArgumentException.class,()->client.parse(completion("Title","Long","Short","stop"),"{}"));
+    }
     @Test void batchUploadCreationRecoveryAndResultDownloadUseOfficialProtocol() throws Exception {
         var paths=new ArrayList<String>(); var payloads=new ArrayList<String>();
         var replies=new ArrayDeque<String>();
@@ -75,6 +86,7 @@ class OpenAiTranslationsTest {
         var calls=new ArrayList<Integer>();
         var worker=new OutingTranslationWorker(null,null,null,false) {
             @Override public Map<String,Object> enqueueMissing(int limit) { calls.add(limit); return Map.of("accepted",limit,"requests",limit*5); }
+            @Override public Map<String,Object> enqueueAllMissing() { calls.add(-1); return Map.of("accepted",501,"requests",2505,"scope","all"); }
             @Override public Map<String,Object> status() { return Map.of("mode","batch"); }
         };
         String token="private-test-token-at-least-32-characters";
@@ -88,5 +100,12 @@ class OpenAiTranslationsTest {
         mvc.perform(get(getUrl).servletPath(getUrl).header("Authorization","Bearer "+token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("batch"));
         assertEquals(List.of(500),calls);
+        String allUrl="/api/admin/translations/generate-all-missing";
+        mvc.perform(post(allUrl).servletPath(allUrl)).andExpect(status().isUnauthorized());
+        assertEquals(List.of(500),calls);
+        mvc.perform(post(allUrl).servletPath(allUrl).header("Authorization","Bearer "+token))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.accepted").value(501))
+            .andExpect(jsonPath("$.requests").value(2505)).andExpect(jsonPath("$.scope").value("all"));
+        assertEquals(List.of(500,-1),calls);
     }
 }

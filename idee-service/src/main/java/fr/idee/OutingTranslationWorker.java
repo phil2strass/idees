@@ -27,11 +27,19 @@ public class OutingTranslationWorker {
 
     public Map<String,Object> enqueueMissing(int limit) {
         if(limit<1 || limit>500) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Limite comprise entre 1 et 500 sorties.");
+        return enqueueMissingOutings(limit);
+    }
+
+    public Map<String,Object> enqueueAllMissing() {
+        return enqueueMissingOutings(null);
+    }
+
+    private Map<String,Object> enqueueMissingOutings(Integer limit) {
         if(!isEnabled()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Traductions OpenAI désactivées ou clé absente.");
         return transaction.execute(status -> {
             if(!Boolean.TRUE.equals(db.queryForObject("SELECT pg_try_advisory_xact_lock(67468016)",Boolean.class)))
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"Une demande de traduction est en cours.");
-            var added=db.queryForList("""
+            var result=db.queryForMap("""
                 WITH candidates AS (
                     SELECT o.id,s.source,s.source_hash FROM idee_outing o JOIN idee_translation_source s ON s.outing_id=o.id
                     WHERE EXISTS (
@@ -39,15 +47,19 @@ public class OutingTranslationWorker {
                       WHERE NOT EXISTS(SELECT 1 FROM idee_outing_translation t WHERE t.outing_id=o.id AND t.language=lang AND t.source_hash=s.source_hash)
                         AND NOT EXISTS(SELECT 1 FROM idee_outing_translation_job j WHERE j.outing_id=o.id AND j.language=lang))
                     ORDER BY o.id LIMIT ? FOR UPDATE OF o SKIP LOCKED
-                )
+                ), added AS (
                 INSERT INTO idee_outing_translation_job(outing_id,language,source_hash,source)
                 SELECT c.id,lang,c.source_hash,c.source FROM candidates c CROSS JOIN unnest(ARRAY['en','de','it','nl','es']) lang
                 WHERE NOT EXISTS(SELECT 1 FROM idee_outing_translation t WHERE t.outing_id=c.id AND t.language=lang AND t.source_hash=c.source_hash)
                 ON CONFLICT(outing_id,language) DO NOTHING RETURNING outing_id
+                )
+                SELECT count(DISTINCT outing_id) AS accepted,count(*) AS requests FROM added
                 """,limit);
-            long outings=added.stream().map(row->row.get("outing_id")).distinct().count();
-            return Map.of("accepted",outings,"requests",added.size(),"limit",limit,
-                "languages",List.of("en","de","it","nl","es"),"statusUrl","/api/admin/translations/status");
+            if(limit==null) result.put("scope","all");
+            else result.put("limit",limit);
+            result.put("languages",List.of("en","de","it","nl","es"));
+            result.put("statusUrl","/api/admin/translations/status");
+            return result;
         });
     }
 
@@ -104,6 +116,14 @@ public class OutingTranslationWorker {
                 var rows=db.queryForList("SELECT * FROM idee_outing_translation_job WHERE outing_id=? AND language=? AND batch_id IS NULL AND next_attempt_at<=now()",outing,language);
                 if(rows.isEmpty()) continue;
                 var row=rows.getFirst(); int size=row.get("source").toString().length();
+                var reused=db.queryForList("""
+                    SELECT jsonb_build_object('description_longue',t.description_longue,'description_courte',t.description_courte) AS descriptions
+                    FROM idee_outing_translation t
+                    WHERE t.outing_id=? AND t.language=?
+                      AND t.source->'description_longue'=?::jsonb->'description_longue'
+                      AND t.source->'description_courte'=?::jsonb->'description_courte'
+                    """,outing,language,row.get("source").toString(),row.get("source").toString());
+                if(!reused.isEmpty()) row.put("reused_descriptions",reused.getFirst().get("descriptions"));
                 if(size>50000) { retry(row,null,"source_too_long"); continue; }
                 if(characters+size>2000000) break;
                 characters+=size; items.add(row);
@@ -113,8 +133,9 @@ public class OutingTranslationWorker {
             db.update("INSERT INTO idee_translation_batch(id,state,model,prompt_version,payload,total) VALUES(?,'PREPARED',?,?,?,?)",
                 id,client.model,OpenAiTranslations.PROMPT_VERSION,client.jsonl(items),items.size());
             for(var item:items) {
-                db.update("INSERT INTO idee_translation_batch_item(batch_id,outing_id,language,source_hash,source) VALUES(?,?,?,?,?::jsonb)",
-                    id,item.get("outing_id"),item.get("language"),item.get("source_hash"),item.get("source").toString());
+                db.update("INSERT INTO idee_translation_batch_item(batch_id,outing_id,language,source_hash,source,reused_descriptions) VALUES(?,?,?,?,?::jsonb,?::jsonb)",
+                    id,item.get("outing_id"),item.get("language"),item.get("source_hash"),item.get("source").toString(),
+                    item.get("reused_descriptions")==null?null:item.get("reused_descriptions").toString());
                 db.update("UPDATE idee_outing_translation_job SET batch_id=? WHERE outing_id=? AND language=?",id,item.get("outing_id"),item.get("language"));
             }
             return db.queryForMap("SELECT * FROM idee_translation_batch WHERE id=?",id);
@@ -165,7 +186,7 @@ public class OutingTranslationWorker {
                 var output=duplicate.contains(custom)?null:results.get(custom);
                 OpenAiTranslations.Texts texts=null;
                 if(output!=null && output.path("response").path("status_code").asInt()==200) {
-                    try { texts=client.parse(output.path("response").path("body")); }
+                    try { texts=client.parse(output.path("response").path("body"),item.get("reused_descriptions")); }
                     catch(IllegalArgumentException ignored) { /* only this language is retried */ }
                 }
                 apply(batch,item,texts);
@@ -206,11 +227,11 @@ public class OutingTranslationWorker {
                     if(exists) outcome="reused";
                     else if(texts!=null) {
                         db.update("""
-                            INSERT INTO idee_outing_translation(outing_id,language,source_hash,title,description_longue,description_courte,model,prompt_version)
-                            VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(outing_id,language) DO UPDATE SET
+                            INSERT INTO idee_outing_translation(outing_id,language,source_hash,title,description_longue,description_courte,model,prompt_version,source)
+                            VALUES(?,?,?,?,?,?,?,?,?::jsonb) ON CONFLICT(outing_id,language) DO UPDATE SET
                             source_hash=excluded.source_hash,title=excluded.title,description_longue=excluded.description_longue,
-                            description_courte=excluded.description_courte,model=excluded.model,prompt_version=excluded.prompt_version,generated_at=now()
-                            """,outing,language,hash,texts.title(),texts.description_longue(),texts.description_courte(),batch.get("model"),batch.get("prompt_version"));
+                            description_courte=excluded.description_courte,model=excluded.model,prompt_version=excluded.prompt_version,source=excluded.source,generated_at=now()
+                            """,outing,language,hash,texts.title(),texts.description_longue(),texts.description_courte(),batch.get("model"),batch.get("prompt_version"),item.get("source").toString());
                         outcome="applied";
                     } else { retry(item,id,"translation_failed"); outcome="failed"; }
                 }

@@ -45,6 +45,9 @@ class DatatourismeDatabaseTest {
         response.set(json.readTree("{\"objects\":["+event+"],\"meta\":{\"next\":\""+cursor+"\"}}"));
         db.update("UPDATE idee_datatourisme_state SET next_url='https://api.datatourisme.fr/v1/entertainmentAndEvent?fields=uuid',completed_at=now(),full_completed_at=now() WHERE department='67'");
         importer.tick();
+        UUID firstRun=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class);
+        assertHistory(firstRun,1,0,1,0,0);
+        assertEquals("running",db.queryForObject("SELECT state FROM idee_import_run WHERE id=?",String.class,firstRun));
         assertTrue(urls.getFirst().contains("fields=*")); assertFalse(urls.getFirst().contains("update="));
         assertEquals(1,count("idee_datatourisme_event")); assertEquals(2,count("idee_datatourisme_period"));
         assertEquals("Photographe",db.queryForObject("SELECT credit FROM idee_media WHERE is_primary",String.class));
@@ -65,6 +68,7 @@ class DatatourismeDatabaseTest {
             }
         };
         new OutingDescriptions(db,mistral,manager).generateFrench("datatourisme-"+uuid);
+        assertHistory(firstRun,1,0,1,1,1);
         assertEquals(0,count("idee_outing_description_job"));
         String publicPath=db.queryForObject("SELECT path FROM idee_public_route WHERE outing_id=? AND canonical AND language='fr'",String.class,outing);
         assertEquals("/bas-rhin/erstein/exposition",publicPath);
@@ -86,6 +90,9 @@ class DatatourismeDatabaseTest {
         // A partially processed page must roll back both records and the checkpoint.
         response.set(json.readTree("{\"objects\":["+event.replace("Exposition","Changed")+",{}],\"meta\":{\"next\":null}}"));
         ready(); importer.tick();
+        assertHistory(firstRun,1,0,1,1,1);
+        assertEquals(1L,db.queryForObject("SELECT pages FROM idee_import_run WHERE id=?",Long.class,firstRun));
+        assertEquals("retrying",db.queryForObject("SELECT state FROM idee_import_run WHERE id=?",String.class,firstRun));
         assertEquals("Exposition",db.queryForObject("SELECT title FROM idee_outing WHERE id=?",String.class,outing));
         assertEquals(cursor,db.queryForObject("SELECT next_url FROM idee_datatourisme_state WHERE department='67'",String.class));
         assertEquals(cursor,urls.getLast());
@@ -93,6 +100,9 @@ class DatatourismeDatabaseTest {
         // Replay/upsert keeps the same outing and replaces periods instead of duplicating them.
         response.set(json.readTree("{\"objects\":["+event.replace("Exposition","Updated")+"],\"meta\":{\"next\":null}}"));
         ready(); importer.tick();
+        assertHistory(firstRun,1,0,1,1,1); // A created outing stays counted once across pages.
+        assertEquals("completed",db.queryForObject("SELECT state FROM idee_import_run WHERE id=?",String.class,firstRun));
+        assertNotNull(db.queryForObject("SELECT completed_at FROM idee_import_run WHERE id=?",java.sql.Timestamp.class,firstRun));
         assertEquals(outing,db.queryForObject("SELECT outing_id FROM idee_datatourisme_event",Long.class));
         assertEquals(2,count("idee_datatourisme_period")); assertEquals(1,count("idee_place"));
         assertEquals(publicPath,db.queryForObject("SELECT path FROM idee_public_route WHERE outing_id=? AND canonical AND language='fr'",String.class,outing));
@@ -106,6 +116,8 @@ class DatatourismeDatabaseTest {
         // An incremental empty response is not evidence of deletion.
         db.update("UPDATE idee_datatourisme_state SET completed_at=now()-interval '2 days' WHERE department='67'");
         ready(); importer.tick(); assertTrue(urls.getLast().contains("update="));
+        UUID emptyRun=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class);
+        assertHistory(emptyRun,0,0,0,0,0);
         assertEquals("published",db.queryForObject("SELECT status FROM idee_outing WHERE id=?",String.class,outing));
         // Manual requests preserve the watermark and any in-progress cursor.
         var previousStart=db.queryForObject("SELECT started_at FROM idee_datatourisme_state WHERE department='67'",java.sql.Timestamp.class);
@@ -119,6 +131,8 @@ class DatatourismeDatabaseTest {
         assertEquals(2,count("idee_datatourisme_event"));
         assertEquals("Actualisée",db.queryForObject("SELECT title FROM idee_outing WHERE id=?",String.class,outing));
         assertEquals(2,count("idee_outing_description_job"));
+        UUID changedRun=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class);
+        assertHistory(changedRun,1,1,2,0,0);
         assertEquals("Description actualisée",db.queryForObject("SELECT source_description FROM idee_outing_description_job WHERE outing_id=?",String.class,outing));
         assertEquals(0,importer.requestSync());
         assertEquals(cursor,db.queryForObject("SELECT next_url FROM idee_datatourisme_state WHERE department='67'",String.class));
@@ -129,6 +143,8 @@ class DatatourismeDatabaseTest {
         db.update("UPDATE idee_datatourisme_state SET completed_at=now()-interval '2 days',full_completed_at=now()-interval '31 days' WHERE department='67'");
         ready(); importer.tick(); assertFalse(urls.getLast().contains("update="));
         assertEquals("archived",db.queryForObject("SELECT status FROM idee_outing WHERE id=?",String.class,outing));
+        UUID archivedRun=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class);
+        assertHistory(archivedRun,0,2,0,0,0);
         assertEquals(2,count("idee_datatourisme_event"));
         var reduced=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(event);
         reduced.remove("hasContact"); reduced.remove("hasRepresentation");
@@ -139,6 +155,21 @@ class DatatourismeDatabaseTest {
         assertEquals(3,count("idee_datatourisme_translation")); assertEquals(3,count("idee_media"));
         assertEquals(5,count("idee_datatourisme_resource"));
         assertNull(db.queryForObject("SELECT website FROM idee_outing WHERE id=?",String.class,outing));
+        // Even an error on the very first page is preserved and resumes the same run.
+        importer.requestSync(); response.set(json.readTree("{\"objects\":[{}],\"meta\":{\"next\":null}}"));
+        ready(); importer.tick();
+        UUID failedRun=db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class);
+        assertEquals("retrying",db.queryForObject("SELECT state FROM idee_import_run WHERE id=?",String.class,failedRun));
+        assertHistory(failedRun,0,0,0,0,0);
+        response.set(json.readTree("{\"objects\":[],\"meta\":{\"next\":null}}")); ready(); importer.tick();
+        assertEquals(failedRun,db.queryForObject("SELECT run_id FROM idee_datatourisme_state WHERE department='67'",UUID.class));
+        assertEquals("completed",db.queryForObject("SELECT state FROM idee_import_run WHERE id=?",String.class,failedRun));
+    }
+    private void assertHistory(UUID run,long created,long updated,long mistral,long descriptions,long titles) {
+        var row=db.queryForMap("SELECT * FROM idee_import_run WHERE id=?",run);
+        assertEquals(created,row.get("new_outings")); assertEquals(updated,row.get("updated_outings"));
+        assertEquals(mistral,row.get("mistral_outings")); assertEquals(descriptions,row.get("description_translation_outings"));
+        assertEquals(titles,row.get("title_translation_outings"));
     }
     private void ready() { db.update("UPDATE idee_datatourisme_quota SET next_request_at=now()-interval '1 second'"); }
     private long count(String table) { return db.queryForObject("SELECT count(*) FROM "+table,Long.class); }

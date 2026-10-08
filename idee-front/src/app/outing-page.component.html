@@ -73,14 +73,17 @@
           @if (o.images[0]; as image) {
             @if (!coverFailed()) {
               <figure class="cover">
-                <img
-                  [src]="image.url"
-                  [alt]="image.alt"
-                  (error)="coverFailed.set(true)"
-                  fetchpriority="high"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                />
+                <button type="button" class="image-zoom" [attr.aria-label]="t('Agrandir l’image')"
+                  aria-haspopup="dialog" (click)="openImage(image)">
+                  <img
+                    [src]="image.url"
+                    [alt]="image.alt"
+                    (error)="coverFailed.set(true)"
+                    fetchpriority="high"
+                    decoding="async"
+                    referrerpolicy="no-referrer"
+                  />
+                </button>
                 @if (image.credit || image.license) {
                   <figcaption>
                     {{ image.credit ? t("Photo : ") + image.credit : ""
@@ -308,7 +311,51 @@
                       <p class="schedule-label">{{ s.label }}</p>
                     }
                   }
-                  <div class="sessions">
+                  @if (manyDates()) {
+                    <div class="dates-toolbar">
+                      <h3>{{ calendarOpen() ? t('Horaires du {date}', { date: calendarLabel(selectedDay()) }) : t('Cette semaine') }}</h3>
+                      <button type="button" class="text-button calendar-toggle"
+                        [attr.aria-expanded]="calendarOpen()" aria-controls="outing-calendar"
+                        (click)="toggleCalendar()">
+                        <i-tabler name="calendar-event" />
+                        {{ calendarOpen() ? t('Revenir à cette semaine') : t('Voir toutes les dates dans le calendrier') }}
+                      </button>
+                    </div>
+                    @if (calendarOpen()) {
+                      <div id="outing-calendar" class="outing-calendar" role="region" [attr.aria-label]="t('Calendrier des dates disponibles')">
+                        <div class="calendar-month-nav">
+                          <button type="button" [attr.aria-label]="t('Mois précédent')"
+                            [disabled]="calendarMonth() <= calendarBounds().first" (click)="moveCalendarMonth(-1)">
+                            <i-tabler name="chevron-left" />
+                          </button>
+                          <strong aria-live="polite">{{ calendarLabel(calendarMonth() + '-01', true) }}</strong>
+                          <button type="button" [attr.aria-label]="t('Mois suivant')"
+                            [disabled]="calendarMonth() >= calendarBounds().last" (click)="moveCalendarMonth(1)">
+                            <i-tabler name="chevron-right" />
+                          </button>
+                        </div>
+                        <p class="calendar-help">{{ t('Choisissez une date pour voir les horaires.') }}</p>
+                        <div class="outing-calendar-grid" role="group" [attr.aria-label]="t('Choisir un jour')">
+                          @for (weekday of weekdays(); track $index) {
+                            <span class="calendar-weekday" aria-hidden="true">{{ weekday }}</span>
+                          }
+                          @for (day of calendarDays(); track day.key) {
+                            <button type="button" class="calendar-day" [attr.data-date]="day.key"
+                              [class.outside-month]="!day.inMonth"
+                              [class.available]="day.inMonth && day.available"
+                              [class.selected]="selectedDay() === day.key"
+                              [disabled]="!day.inMonth || !day.available"
+                              [attr.aria-label]="calendarLabel(day.key)"
+                              [attr.aria-pressed]="selectedDay() === day.key"
+                              [attr.aria-current]="today() === day.key ? 'date' : null"
+                              (click)="selectedDay.set(day.key)">{{ day.number }}</button>
+                          }
+                        </div>
+                        <p class="calendar-legend"><span aria-hidden="true"></span>{{ t('Dates disponibles') }}</p>
+                      </div>
+                    }
+                  }
+                  <div class="sessions" aria-live="polite" aria-atomic="true">
                     @for (x of visibleDates(); track $index) {
                       <div
                         class="session"
@@ -351,25 +398,10 @@
                       </div>
                     } @empty {
                       <p class="muted">
-                        {{ t("Les prochaines dates restent à confirmer.") }}
+                        {{ manyDates() ? t('Aucune date prévue cette semaine. Consultez le calendrier pour les prochaines dates.') : t("Les prochaines dates restent à confirmer.") }}
                       </p>
                     }
                   </div>
-                  @if (o.occurrences.length > 4) {
-                    <button
-                      class="text-button"
-                      (click)="showAllDates.set(!showAllDates())"
-                    >
-                      {{
-                        showAllDates()
-                          ? t("Afficher moins de dates")
-                          : t("Voir les {count} dates", {
-                              count: o.occurrences.length,
-                            })
-                      }}
-                      <span aria-hidden="true">↓</span>
-                    </button>
-                  }
                 }
               </section>
               <section class="story-section info-section" id="tarifs">
@@ -554,13 +586,16 @@
                   <div class="gallery">
                     @for (image of o.images.slice(1); track image.url) {
                       <figure>
-                        <img
-                          [src]="image.url"
-                          [alt]="image.alt"
-                          loading="lazy"
-                          decoding="async"
-                          referrerpolicy="no-referrer"
-                        />
+                        <button type="button" class="image-zoom" [attr.aria-label]="t('Agrandir l’image')"
+                          aria-haspopup="dialog" (click)="openImage(image)">
+                          <img
+                            [src]="image.url"
+                            [alt]="image.alt"
+                            loading="lazy"
+                            decoding="async"
+                            referrerpolicy="no-referrer"
+                          />
+                        </button>
                         @if (image.credit || image.license) {
                           <figcaption>
                             {{ image.credit
@@ -573,63 +608,21 @@
                   </div>
                 </section>
               }
-              @if (o.sourceDetails; as details) {
-                <details class="source-details">
-                  <summary>{{ t("À propos de cette fiche") }}</summary>
-                  <dl>
-                    @if (sourceNames("creator"); as creator) {
-                      <div>
-                        <dt>{{ t("Informations fournies par") }}</dt>
-                        <dd>{{ creator }}</dd>
-                      </div>
-                    }
-                    @if (sourceNames("publisher"); as publisher) {
-                      <div>
-                        <dt>{{ t("Diffusées par") }}</dt>
-                        <dd>{{ publisher }}</dd>
-                      </div>
-                    }
-                    @if (
-                      sourceDate(details.updatedOn || details.updatedAt);
-                      as updated
-                    ) {
-                      <div>
-                        <dt>{{ t("Mise à jour de la source") }}</dt>
-                        <dd>{{ updated }}</dd>
-                      </div>
-                    }
-                    @if (sourceDate(details.createdOn); as created) {
-                      <div>
-                        <dt>{{ t("Fiche source créée le") }}</dt>
-                        <dd>{{ created }}</dd>
-                      </div>
-                    }
-                    @if (details.reference) {
-                      <div>
-                        <dt>{{ t("Référence chez la source") }}</dt>
-                        <dd>{{ details.reference }}</dd>
-                      </div>
-                    }
-                  </dl>
-                  @if (safeUrl(o.sourceUrl); as source) {
-                    <a
-                      [href]="source"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >{{ t("Consulter la fiche DATAtourisme ↗") }}</a
-                    >
-                  }
-                </details>
-              } @else if (safeUrl(o.sourceUrl); as source) {
-                <p class="source-note">
-                  {{ t("Pour les dernières informations :") }}
-                  <a [href]="source" target="_blank" rel="noopener noreferrer"
-                    >{{ o.sourceName || t("consulter la source") }} ↗</a
-                  >
-                </p>
-              }
             </div>
           </div>
+          @if (o.sourceDetails) {
+            <p class="source-attribution">
+              {{ t("Données d’origine :") }}
+              {{ sourceProducers() || t("Collectif de producteurs touristiques") }},
+              {{ t("via") }} <a href="https://www.datatourisme.fr/">DATAtourisme</a>
+              (<a href="https://www.datatourisme.fr/ressources-juridiques/">{{ t("Licence Ouverte 2.0") }}</a>).
+              @if (sourceUpdated(); as updated) {
+                {{ t("Dernière mise à jour de la source :") }}
+                <time [attr.datetime]="updated.day">{{ updated.label }}</time>.
+              }
+              {{ t("Textes adaptés et, selon la langue, traduits pour ce site.") }}
+            </p>
+          }
           <footer class="outing-footer">
             <div>
               <span>{{ t("ET POUR LA PROCHAINE FOIS ?") }}</span>
@@ -644,3 +637,18 @@
     </article>
   }
 </main>
+
+<dialog #imageDialog class="image-lightbox" autofocus [attr.aria-label]="t('Image agrandie')"
+  (click)="closeImageOnBackdrop($event)" (cancel)="closeImage()" (close)="closeImage()"
+  (keydown.tab)="$event.preventDefault(); imageClose.focus()">
+  <button #imageClose type="button" class="lightbox-close" [attr.aria-label]="t('Fermer l’image')"
+    (click)="closeImage()"><span aria-hidden="true">×</span></button>
+  @if (enlargedImage(); as image) {
+    <figure>
+      <img [src]="image.url" [alt]="image.alt" referrerpolicy="no-referrer" />
+      @if (image.credit || image.license) {
+        <figcaption>{{ image.credit }}{{ image.credit && image.license ? ' · ' : '' }}{{ image.license }}</figcaption>
+      }
+    </figure>
+  }
+</dialog>

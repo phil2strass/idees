@@ -113,6 +113,46 @@ for (const path of ['/missing', '/haut-rhin/strasbourg/exposition-wurth', '/de/b
 }
 const spoof = await renderRequest(new Request('https://untrusted.test' + canonical, { headers: {'X-Forwarded-Host': 'evil.test'} }));
 assert((await spoof.text()).includes('https://idee.test' + canonical));
+const localImage = '/api/media/images/' + 'a'.repeat(64) + '.png';
+outing.images = [{url:localImage,alt:'Photo locale',credit:'Photographe'}];
+const localImageHtml = await (await render(canonical)).text();
+assert(localImageHtml.includes(`src="${localImage}"`));
+assert.match(localImageHtml, new RegExp(`property="og:image"[^>]+content="https://idee.test${localImage}"`));
+const namedImage='/api/media/images/exposition-wurth-strasbourg-'+'a'.repeat(16)+'.png';
+outing.images=[{url:namedImage,alt:outing.title,credit:'Photographe'}];
+const namedImageHtml=await (await render(canonical)).text();
+assert(namedImageHtml.includes(`src="${namedImage}"`));
+assert.match(namedImageHtml,new RegExp(`property="og:image"[^>]+content="https://idee.test${namedImage}"`));
+const localizedImageHtml=await (await render(outing.urls.en)).text();
+assert(localizedImageHtml.includes(`src="${namedImage}"`));
+assert(localizedImageHtml.includes('alt="Würth exhibition"'));
+outing.images[0].alt='Vue de la façade';
+assert((await (await render(outing.urls.en)).text()).includes('alt="Vue de la façade"'));
+outing.images = [];
+// Attribution must name the original producer, even when presentation texts were rewritten.
+outing.sourceDetails = {
+  updatedOn:'2026-09-24', updatedAt:'2026-09-25T08:00:00Z',
+  contacts:[{role:'creator',name:'Office de tourisme du Test',channels:[]}],
+  translations:[],terms:[],locations:[],resources:[],
+};
+const attributed = await (await render(canonical)).text();
+assert(attributed.includes('class="source-attribution"'));
+assert(attributed.includes('Office de tourisme du Test'));
+assert(attributed.includes('datetime="2026-09-24"'));
+assert(attributed.includes('24 septembre 2026'));
+assert(attributed.includes('Textes adaptés et, selon la langue, traduits pour ce site.'));
+assert(!attributed.includes('À propos de cette fiche'));
+const englishAttribution = await (await render(outing.urls.en)).text();
+assert(englishAttribution.includes('Source last updated:'));
+assert(englishAttribution.includes('September 24, 2026'));
+outing.sourceDetails.updatedOn = null;
+const fallbackAttribution = await (await render(canonical)).text();
+assert(fallbackAttribution.includes('datetime="2026-09-25"'));
+outing.sourceDetails.updatedAt = null;
+const undatedAttribution = await (await render(canonical)).text();
+assert(!undatedAttribution.includes('Dernière mise à jour de la source :'));
+delete outing.sourceDetails;
+assert(!(await (await render(canonical)).text()).includes('class="source-attribution"'));
 unavailable = true;
 for (const path of ['/', canonical]) {
   const response = await render(path);

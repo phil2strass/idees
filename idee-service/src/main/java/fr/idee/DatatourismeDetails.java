@@ -150,7 +150,8 @@ public class DatatourismeDetails {
                                 url,media_type,is_image,title,credit,license,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?::jsonb)
                             """,uuid,field.equals("hasMainRepresentation")?"main":"representation",representationPosition,resourcePosition,locatorPosition++,
                                 url,mime,image,title,credit,resourceLicense,representation.toString());
-                        if (image && webUrl(url,true) && rendered.add(url)) {
+                        if (image && webUrl(url,false) && rendered.add(url)) {
+                            db.update("INSERT INTO idee_image_download(source_url) VALUES(?) ON CONFLICT DO NOTHING",url);
                             db.update("INSERT INTO idee_media(outing_id,url,alt,credit,license,position,is_primary) VALUES(?,?,?,?,?,?,?)",
                                     outing,url,title,credit,resourceLicense,imagePosition,imagePosition==0);
                             imagePosition++;

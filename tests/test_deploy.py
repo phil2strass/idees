@@ -1,6 +1,7 @@
-"""Deployment safety checks. Docker/HTTP are mocked; no SSH or production writes."""
-import os
+"""Native deployment safety checks. Commands are simulated; no remote or production writes."""
+import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import secrets
@@ -11,196 +12,193 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MANAGED = ('idee-front', 'idee-service', 'idee-mcp', 'scripts', 'tests', 'docs', 'deploy')
-FILES = ('compose.yaml', '.dockerignore', '.gitignore', '.env.example', 'README.md',
-         'requirements.txt', 'start-front.sh', 'deploy.sh')
+FILES = ('.gitignore', '.env.example', 'README.md', 'AGENTS.md', 'CODEX.md', 'requirements.txt',
+         'start-front.sh', 'deploy.sh', 'download-images.sh', 'import-outings.sh', 'generate-all-translations.sh')
 
 class DeployTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='idee-deploy-tests-')
+        self.tmp = tempfile.TemporaryDirectory(prefix='idee-native-tests-')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        self.source = self.root / 'source'
-        self.live = self.root / 'live'
+        self.source, self.live = self.root / 'source', self.root / 'live'
+        self.stage = Path('/tmp/idee-deploy.' + secrets.token_hex(4))
+        self.stage.mkdir()
+        self.addCleanup(shutil.rmtree, self.stage, True)
         for root, marker in ((self.source, 'new'), (self.live, 'old')):
             root.mkdir()
             for directory in MANAGED:
                 (root / directory).mkdir()
             for name in FILES:
-                (root / name).write_text(marker)
-            for name in ('package.sh', 'remote-update.sh'):
-                shutil.copy2(ROOT / 'deploy' / name, root / 'deploy' / name)
-            (root / 'idee-front' / 'version.txt').write_text(marker)
-        (self.live / 'deploy/.env').write_text('PRIVATE_PRODUCTION_SECRET=keep-this\n')
-        (self.live / 'idee-front/obsolete.ts').write_text('removed upstream')
+                shutil.copy2(ROOT / name, root / name)
+            for file in (ROOT / 'deploy').iterdir():
+                if file.is_file() and file.suffix in ('.sh', '.py'):
+                    shutil.copy2(file, root / 'deploy' / file.name)
+            (root / 'idee-front/version.txt').write_text(marker)
+            (root / 'scripts/expand_calendar_json.py').write_text('print("[]")\n')
+            (root / 'scripts/project_calendar.py').write_text('# fixture\n')
+        (self.live / 'deploy/.env').write_text('DB_PASSWORD=PRIVATE_PRODUCTION_SECRET\nDB_USER=idee\n')
+        (self.source / 'deploy/.env').write_text('DO_NOT_UPLOAD=local-secret\n')
+        (self.source / 'idee-front/.env.production').write_text('DO_NOT_UPLOAD=local-secret\n')
+        (self.live / 'data/images').mkdir(parents=True)
+        (self.live / 'data/images/photo.jpg').write_bytes(b'keep-image')
+        (self.live / 'logs').mkdir()
+        (self.live / '.runtime/releases/old').mkdir(parents=True)
+        (self.live / '.runtime/releases/old/service.jar').write_bytes(b'old-jar')
+        (self.live / '.runtime/current').symlink_to(self.live / '.runtime/releases/old')
+        (self.live / '.venv/bin').mkdir(parents=True)
+        (self.live / '.venv/bin/python').symlink_to(shutil.which('python3'))
         (self.live / 'idee-mcp/.venv').mkdir()
-        (self.live / 'idee-mcp/.venv/runtime').write_text('keep runtime')
+        (self.live / 'idee-mcp/.venv/runtime').write_text('keep')
         (self.live / '.tunnel').mkdir()
-        (self.live / '.tunnel/key').write_text('keep tunnel')
-        (self.live / 'server-notes.txt').write_text('keep unmanaged root file')
-        (self.source / 'deploy/.env').write_text('LOCAL_SECRET_MUST_NOT_TRANSFER')
-        (self.source / 'idee-front/.env.production').write_text('LOCAL_SECRET_MUST_NOT_TRANSFER')
-        self.stage = Path('/tmp') / ('idee-deploy.' + secrets.token_hex(4))
-        self.stage.mkdir(mode=0o700)
-        self.addCleanup(lambda: shutil.rmtree(self.stage, ignore_errors=True))
-        result = subprocess.run(['bash', str(self.source / 'deploy/package.sh'), str(self.stage / 'source.tar.gz')], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.live / '.tunnel/key').write_text('keep-private')
+        (self.live / 'idee-front/obsolete.ts').write_text('obsolete')
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        self.log = self.root / 'docker.log'
-        (self.bin / 'docker').write_text('''#!/usr/bin/env python3
-import os, sys, json
-args = sys.argv[1:]
-with open(os.environ['DEPLOY_TEST_LOG'], 'a') as log:
-    log.write(json.dumps(args) + '\\n')
-mode = os.environ.get('DEPLOY_TEST_FAIL', '')
-if 'info' in args or 'version' in args: pass
-elif '--help' in args: print('--wait-timeout')
-elif 'build' in args:
-    from pathlib import Path
-    source = Path(args[args.index('--project-directory') + 1])
-    assert (source / 'idee-front/version.txt').stat().st_mode & 0o044, 'Archive permissions were restricted by umask'
-    assert (source / 'idee-front/src/assets/deploy-version.json').stat().st_mode & 0o044, 'Version marker must be publicly readable'
-    if mode == 'build': sys.exit(1)
-elif 'run' in args:
-    if mode == 'runtime': sys.exit(1)
-    print('[]')
-elif 'pg_dump' in args:
-    if mode == 'dump': sys.exit(1)
-    print('MOCK_DATABASE_DUMP')
-elif 'pg_restore' in args:
-    assert 'MOCK_DATABASE_DUMP' in sys.stdin.read()
-elif 'images' in args: print('old-image-id')
-elif 'port' in args: print('127.0.0.1:9081')
+        self.log = self.root / 'calls.log'
+        fake = self.bin / 'fake-command'
+        fake.write_text('''#!/usr/bin/env python3
+import json,os,pathlib,sys
+name=pathlib.Path(sys.argv[0]).name
+args=sys.argv[1:]
+with open(os.environ['DEPLOY_TEST_LOG'],'a') as log: log.write(json.dumps([name,*args])+'\\n')
+failure=os.environ.get('DEPLOY_TEST_FAIL','')
+if name=='mvn':
+    if failure=='build': sys.exit(1)
+    dest=pathlib.Path('idee-service/target');dest.mkdir(parents=True,exist_ok=True)
+    (dest/'idee-service-0.0.1-SNAPSHOT.jar').write_bytes(b'new-jar')
+if name=='npm' and args==['run','build']:
+    dest=pathlib.Path('dist/idee/server');dest.mkdir(parents=True,exist_ok=True)
+    (dest/'server.mjs').write_text('// simulated SSR')
+    browser=pathlib.Path('dist/idee/browser/assets');browser.mkdir(parents=True,exist_ok=True)
+    (browser/'deploy-version.json').write_text(pathlib.Path('src/assets/deploy-version.json').read_text())
+if name=='psql' and failure=='database': sys.exit(1)
+if name=='pg_dump':
+    if failure=='backup': sys.exit(1)
+    sys.stdout.buffer.write(b'SIMULATED_BACKUP')
+if name=='sudo' and 'restart' in args and '-l' not in args and failure=='restart': sys.exit(1)
+if name=='curl' and '--output' in args:
+    target=args[args.index('--output')+1]
+    if target!='/dev/null':
+        p=pathlib.Path(target)
+        if target.endswith('.html'):
+            p.write_text('<idee-root></idee-root>' if failure=='ssr' else '<idee-root ng-server-context="ssr">Rendered</idee-root>')
+        else: p.write_text(json.dumps({'version':('b' if failure=='version' else 'a')*64}))
 ''')
-        (self.bin / 'curl').write_text("""#!/usr/bin/env python3
-import sys, json, os
-args = sys.argv[1:]
-if '--output' in args:
-    target = args[args.index('--output') + 1]
-    if target != '/dev/null':
-        with open(target, 'w') as output:
-            if target.endswith('.html'):
-                output.write('<idee-root></idee-root>' if os.environ.get('DEPLOY_TEST_FAIL') == 'ssr' else '<idee-root ng-server-context="ssr">Rendered</idee-root>')
-            else:
-                json.dump({'version': ('b' if os.environ.get('DEPLOY_TEST_FAIL') == 'version' else 'a') * 64}, output)
-""")
-        for file in self.bin.iterdir():
-            file.chmod(0o755)
+        fake.chmod(0o755)
+        for name in ('java', 'mvn', 'node', 'npm', 'psql', 'pg_dump', 'pg_restore', 'systemctl', 'sudo', 'curl'):
+            (self.bin / name).symlink_to(fake)
+        result = subprocess.run(['bash', str(self.source / 'deploy/package.sh'), str(self.stage / 'source.tar.gz')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def update(self, failure='', extra_args=()):
         env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
                    DEPLOY_TEST_LOG=str(self.log), DEPLOY_TEST_FAIL=failure)
-        args = ['bash', str(ROOT / 'deploy/remote-update.sh'), str(self.live), str(self.stage), 'false', 'a' * 64]
-        args.extend(extra_args)
-        return subprocess.run(args, stdin=subprocess.DEVNULL, env=env, capture_output=True, text=True)
+        return subprocess.run(['bash', str(ROOT / 'deploy/remote-update.sh'), str(self.live), str(self.stage),
+                               'false', 'a'*64, *extra_args], env=env, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True)
 
-    def test_archive_excludes_credentials(self):
+    def calls(self):
+        return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
+
+    def test_archive_excludes_secrets_and_runtime(self):
         with tarfile.open(self.stage / 'source.tar.gz') as archive:
             names = archive.getnames()
-            self.assertNotIn('deploy/.env', names)
-            self.assertNotIn('idee-front/.env.production', names)
-            self.assertIn('.env.example', names)
-            self.assertIn('deploy.sh', names)
-            self.assertIn('start-front.sh', names)
+        self.assertNotIn('deploy/.env', names)
+        self.assertNotIn('idee-front/.env.production', names)
+        self.assertIn('AGENTS.md', names)
+        self.assertIn('deploy/run-service.py', names)
+        self.assertFalse(any(name.startswith(('data/', '.runtime/')) for name in names))
 
-    def test_actual_project_can_be_packaged_without_network_access(self):
-        result = subprocess.run(['bash', str(ROOT / 'deploy.sh'), '--check'],
-                                capture_output=True, text=True)
+    def test_actual_project_packages_without_network(self):
+        result = subprocess.run(['bash', str(ROOT / 'deploy.sh'), '--check'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Vérification locale réussie', result.stdout)
 
-    def test_removed_database_options_are_rejected(self):
-        for option in ('--export-db', '--replace-db'):
-            with self.subTest(option=option):
-                result = subprocess.run(['bash', str(ROOT / 'deploy.sh'), option, '--check'],
-                                        capture_output=True, text=True)
-                self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertIn('Option inconnue', result.stderr)
-                self.assertNotIn('Archive de sources créée', result.stdout)
-
-    def test_remote_update_rejects_a_database_dump_argument(self):
-        result = self.update(extra_args=('/tmp/old-database.dump',))
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn('Aucun import de base accepte', result.stderr)
-        self.assertFalse(self.log.exists())
-        self.assertEqual((self.live / 'idee-front/version.txt').read_text(), 'old')
-
-    def test_success_preserves_state_and_removes_obsolete_sources(self):
+    def test_success_preserves_data_and_switches_an_immutable_release(self):
         result = self.update()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.live / 'idee-front/version.txt').read_text(), 'new')
         self.assertFalse((self.live / 'idee-front/obsolete.ts').exists())
+        self.assertEqual((self.live / 'data/images/photo.jpg').read_bytes(), b'keep-image')
         self.assertIn('PRIVATE_PRODUCTION_SECRET', (self.live / 'deploy/.env').read_text())
         self.assertTrue((self.live / 'idee-mcp/.venv/runtime').exists())
         self.assertTrue((self.live / '.tunnel/key').exists())
-        self.assertTrue((self.live / 'server-notes.txt').exists())
         self.assertFalse((self.live / 'idee-front/.env.production').exists())
-        self.assertEqual(len(list((self.live / 'backups').glob('*/database.dump'))), 1)
-        log = self.log.read_text()
-        self.assertLess(log.index('"pg_dump"'), log.index('"--force-recreate"'))
-        self.assertIn('"--no-deps"', log)
-        self.assertNotIn('PRIVATE_PRODUCTION_SECRET', result.stdout + result.stderr)
-        calls = [json.loads(line) for line in log.splitlines()]
-        build = next(args for args in calls if 'build' in args)
-        restart = next(args for args in calls if '--force-recreate' in args)
-        self.assertEqual(build[-3:], ['api', 'ssr', 'web'])
-        self.assertEqual(restart[-3:], ['api', 'ssr', 'web'])
-        self.assertIn(['image', 'tag', 'idee-api', 'idee-datatourisme:cron'], calls)
-        for args in calls:
-            self.assertNotIn('createdb', args)
-            self.assertNotIn('psql', args)
-            self.assertNotIn('stop', args)
-            if 'pg_restore' in args:
-                self.assertEqual(args[args.index('pg_restore') + 1:], ['--list'])
+        self.assertEqual((self.live / '.runtime/current/service.jar').read_bytes(), b'new-jar')
+        self.assertEqual((self.live / '.runtime/releases/old/service.jar').read_bytes(), b'old-jar')
+        backups = list((self.live / 'backups').glob('*/database.dump'))
+        self.assertEqual(len(backups), 1)
+        self.assertTrue(backups[0].with_name('images.tar.gz').is_file())
+        calls = self.calls()
+        dump = next(i for i,c in enumerate(calls) if c[0]=='pg_dump')
+        restart = next(i for i,c in enumerate(calls) if c[:3]==['sudo','-n','/usr/bin/systemctl'] and 'restart' in c)
+        self.assertLess(dump, restart)
+        self.assertNotIn('PRIVATE_PRODUCTION_SECRET', result.stdout+result.stderr+self.log.read_text())
+        self.assertFalse(any('createdb' in call or '--clean' in call for call in calls))
 
-    def test_ssh_success_without_deployment_is_not_public_success(self):
-        shutil.copy2(ROOT / 'deploy.sh', self.source / 'deploy.sh')
-        for directory in ('idee-front', 'idee-service'):
-            (self.source / directory / 'Dockerfile').write_text('FROM scratch\n')
-        (self.bin / 'ssh').write_text('#!/usr/bin/env python3\nimport sys\nif "mktemp" in sys.argv[-1]: print(' + repr(str(self.stage)) + ')\n')
-        (self.bin / 'scp').write_text('#!/usr/bin/env bash\nexit 0\n')
-        (self.bin / 'ssh').chmod(0o755)
-        (self.bin / 'scp').chmod(0o755)
-        env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
-                   IDEE_DEPLOY_HOST='mock-host', IDEE_DEPLOY_DIR=str(self.live),
-                   IDEE_DEPLOY_URL='https://mock.invalid')
-        result = subprocess.run(['bash', str(self.source / 'deploy.sh')], env=env, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('ne sert pas la version attendue', result.stderr)
-        self.assertNotIn('Déploiement terminé', result.stdout)
+    def test_build_backup_and_database_failures_leave_current_release_and_sources(self):
+        for failure in ('build', 'backup', 'database'):
+            with self.subTest(failure=failure):
+                if not self.stage.exists():
+                    self.stage.mkdir()
+                    subprocess.run(['bash', str(self.source / 'deploy/package.sh'), str(self.stage/'source.tar.gz')], check=True, capture_output=True)
+                result = self.update(failure)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.live/'idee-front/version.txt').read_text(), 'old')
+                self.assertEqual((self.live/'.runtime/current/service.jar').read_bytes(), b'old-jar')
+                self.assertFalse(any(call[:3]==['sudo','-n','/usr/bin/systemctl'] and 'restart' in call for call in self.calls()))
 
-    def test_wrong_served_version_is_failure(self):
+    def test_ssr_and_wrong_version_are_not_success(self):
         result = self.update('version')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('ne sert pas la nouvelle version', result.stderr)
+        self.assertIn('Version locale inattendue', result.stderr)
+        self.assertTrue(list((self.live/'backups').glob('*/database.dump')))
 
-    def test_static_shell_is_not_successful_ssr_deployment(self):
+    def test_static_shell_is_rejected_even_with_a_healthy_http_response(self):
         result = self.update('ssr')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('ne fournit pas le rendu serveur attendu', result.stderr)
+        self.assertIn('rendu serveur attendu', result.stderr)
 
-    def test_runtime_failure_prevents_switch(self):
-        result = self.update('runtime')
+    def test_public_wrong_version_is_rejected_after_successful_ssh(self):
+        ssh = self.bin/'ssh'
+        ssh.write_text('#!/usr/bin/env python3\nimport sys\nif "mktemp" in sys.argv[-1]: print(' + repr(str(self.stage)) + ')\n')
+        ssh.chmod(0o755)
+        scp = self.bin/'scp'
+        scp.write_text('#!/usr/bin/env bash\nexit 0\n'); scp.chmod(0o755)
+        env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
+                   DEPLOY_TEST_LOG=str(self.log), DEPLOY_TEST_FAIL='version',
+                   IDEE_DEPLOY_HOST='mock-host', IDEE_DEPLOY_DIR=str(self.live))
+        result = subprocess.run(['bash', str(ROOT/'deploy.sh')], env=env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('moteur de calendrier', result.stderr)
-        self.assertEqual((self.live / 'idee-front/version.txt').read_text(), 'old')
-        self.assertNotIn('"--force-recreate"', self.log.read_text())
+        self.assertIn('site public ne sert pas la version attendue', result.stderr)
 
-    def test_build_failure_keeps_live_sources(self):
-        result = self.update('build')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('construction des images', result.stderr)
-        self.assertEqual((self.live / 'idee-front/version.txt').read_text(), 'old')
-        self.assertNotIn('"--force-recreate"', self.log.read_text())
-        self.assertFalse((self.live / 'backups').exists())
+    def test_database_dump_argument_and_legacy_options_are_rejected(self):
+        result = self.update(extra_args=('/tmp/database.dump',))
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.log.exists())
+        for option in ('--replace-db', '--export-db'):
+            result = subprocess.run(['bash', str(ROOT/'deploy.sh'), option], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
 
-    def test_dump_failure_prevents_switch(self):
-        result = self.update('dump')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('sauvegarde des sources', result.stderr)
-        self.assertEqual((self.live / 'idee-front/version.txt').read_text(), 'old')
-        self.assertNotIn('"--force-recreate"', self.log.read_text())
-        self.assertEqual(len(list((self.live / 'backups').glob('*/sources.tar.gz'))), 1)
+    def test_systemd_units_render_without_installing_or_starting(self):
+        dest = self.root/'units'
+        result = subprocess.run(['python3', str(ROOT/'deploy/install-services.py'), '--output-dir', str(dest), '--user', 'debian'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('User=debian', (dest/'idee-api.service').read_text())
+        self.assertIn('04:00:00 UTC', (dest/'idee-import.timer').read_text())
+        self.assertIn('Type=oneshot', (dest/'idee-import.service').read_text())
+
+    def test_native_launcher_uses_fixed_release_and_keeps_secrets_out_of_node(self):
+        spec = importlib.util.spec_from_file_location('native_launcher', ROOT/'deploy/run-service.py')
+        module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        api, env = module.command('api', self.live)
+        self.assertEqual(api[-1], str(self.live/'.runtime/releases/old/service.jar'))
+        self.assertEqual(env['IDEE_IMAGES_DIRECTORY'], str(self.live/'data/images'))
+        self.assertEqual(env['SERVER_ADDRESS'], '127.0.0.1')
+        node, env = module.command('ssr', self.live)
+        self.assertEqual(node[0], 'node')
+        self.assertNotIn('DB_PASSWORD', env)
+        self.assertEqual(env['HOST'], '127.0.0.1')
 
 if __name__ == '__main__':
     unittest.main()

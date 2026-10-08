@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Create deployment secrets once, without printing them or overwriting a file."""
+"""Create native deployment configuration once; never overwrite existing credentials."""
 from pathlib import Path
 import os
 import secrets
-path = Path(__file__).resolve().parent / '.env'
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as out:
-    out.write(f'DB_PASSWORD={secrets.token_hex(32)}\nIDEE_IMPORT_TOKEN={secrets.token_hex(32)}\nIDEE_HTTP_PORT=9081\n')
-print('deploy/.env créé avec des secrets distincts. Conserver ce fichier privé.')
+root = Path(__file__).resolve().parent
+text = (root / '.env.example').read_text()
+text = text.replace('DB_PASSWORD=\n', 'DB_PASSWORD=' + secrets.token_hex(32) + '\n')
+text = text.replace('IDEE_IMPORT_TOKEN=\n', 'IDEE_IMPORT_TOKEN=' + secrets.token_hex(32) + '\n')
+fd = os.open(root / '.env', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as output:
+    output.write(text)
+print('deploy/.env créé. Configurer PostgreSQL avec les mêmes identifiants ; aucun compte ni base créé automatiquement.')

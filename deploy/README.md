@@ -1,131 +1,126 @@
-# Installation sur serveur dédié
+# Déploiement natif sur serveur Linux
 
-Stack autonome : PostgreSQL 16 (`idee`), service Java 21 + moteur Python, frontend Angular servi par Nginx. Pas d’authentification pour les visiteurs. L’API d’import exige une clé privée.
+L’application utilise Java 21, Maven, Node compatible avec les moteurs déclarés dans `idee-front/package.json` (Node 24.15+ conseillé dans la branche 24), PostgreSQL 16 et Python 3 avec python-dateutil. Les processus sont gérés par systemd. Apache assure HTTPS et le proxy vers les ports locaux ; aucune couche de conteneurisation n’est utilisée.
 
-## Mettre à jour le site depuis cette machine
+## Organisation
 
-À la racine du projet :
+- `deploy/.env` : configuration privée de production, mode 0600, jamais remplacée par un déploiement.
+- `.venv/` : Python et les dépendances du calendrier.
+- `.runtime/releases/<version>/` : JAR, frontend SSR compilé et scripts de calendrier immuables.
+- `.runtime/current` : lien symbolique vers la version à exécuter. Un service résout ce lien au lancement et conserve sa version jusqu’à son redémarrage.
+- `data/images/` : images téléchargées, accessibles directement dans le projet, exclues de Git et des archives de sources.
+- `backups/` : sauvegardes de base, sources et images, conservées en cas d’échec.
 
-```bash
-./deploy.sh --check   # Vérifie l’archive, sans connexion au serveur
-./deploy.sh           # Déploie le frontend et l’API sur ovh
-```
+Les services s’exécutent sous l’utilisateur propriétaire du projet (par exemple `debian`), jamais root. Java écoute sur `127.0.0.1:8087`, Node sur `127.0.0.1:4000`. PostgreSQL reste local ou sur l’hôte privé configuré. Les journaux des services sont accessibles par `journalctl`.
 
-Le déploiement conserve les données de la base distante. Il ne lit pas la base locale et ne transfère ni ne restaure de données locales. Les migrations Liquibase restent appliquées au démarrage de l’API pour maintenir sa compatibilité avec le code.
+## Première installation native
 
-Le script cible l’installation existante `/home/debian/idee` sur l’alias SSH `ovh`, avec le projet Compose `idee`, puis vérifie `https://idees.cavousdit.com`. Le script distant est transféré comme fichier et exécuté sans entrée standard, pour que Docker ne puisse pas consommer ses instructions. Un identifiant SHA-256 de l’archive est intégré au frontend ; le succès exige que le site public serve exactement cet identifiant, et pas seulement une réponse HTTP 200. Il peut être lancé depuis un autre répertoire en utilisant son chemin absolu.
+Installer les prérequis sur l’hôte et rendre `java`, `mvn`, `node`, `npm`, `python3`, `psql`, `pg_dump`, `pg_restore`, `rsync`, `flock`, `curl` et `tar` accessibles dans le PATH système. Les outils PostgreSQL doivent être compatibles avec la version du serveur. Prévoir également `python3-venv`. Ne pas modifier les autres sites ou bases de l’hôte.
 
-Il transfère uniquement les sources, construit les deux images pendant que le site actuel reste actif, puis sauvegarde les sources et PostgreSQL dans `backups/deploy-DATE-IDENTIFIANT/` sur le serveur. La sauvegarde contient `sources.tar.gz`, `database.dump` au format PostgreSQL custom et `image-ids.txt`. Le dump est vérifié avec `pg_restore --list` avant toute bascule. Si la construction ou la sauvegarde échoue, les sources de production et les conteneurs en cours ne sont pas remplacés.
-
-La synchronisation supprime les fichiers obsolètes dans les seuls dossiers de sources gérés. Les fichiers `.env` et `.env.*` privés, le volume PostgreSQL, les sauvegardes, `.tunnel` et les environnements `.venv` sont conservés. Les fichiers `.env.example` sont actualisés. Apache, les certificats et les autres sites ne sont pas modifiés. Les migrations Liquibase s’appliquent au démarrage de l’API ; une courte interruption est possible pendant le remplacement de l’API et du frontend.
-
-Prérequis locaux : Bash, Python 3, tar, SSH/SCP et curl. L’authentification SSH doit fonctionner par clé ou agent (`BatchMode=yes`). Sur le serveur : Bash, Python 3, tar, rsync, flock, curl, Docker et Docker Compose avec `--wait`/`--wait-timeout`. Docker doit être accessible directement ou via `sudo -n docker`. Le script exige une base existante démarrée et le fichier privé `deploy/.env` ; il n’effectue pas une installation neuve.
-
-Pour mettre aussi à jour les dépendances MCP et relancer le tunnel existant :
+Depuis le projet copié sur le serveur, en tant qu’utilisateur applicatif :
 
 ```bash
-./deploy.sh --with-mcp
-```
-
-Cette option exige `idee-mcp/.venv` et un service `idee-tunnel.service` déjà actif, ainsi que l’autorisation sudo sans mot de passe pour `/usr/bin/systemctl restart idee-tunnel.service`. Sans cette option, les sources MCP sont transférées mais ses dépendances et son processus ne sont pas relancés. Le contrôle MCP vérifie le service systemd ; il ne réalise pas un échange de protocole avec OpenAI.
-
-La cible peut être adaptée pour une installation équivalente (toujours projet Compose `idee`) :
-
-```bash
-IDEE_DEPLOY_HOST=mon-alias \
-IDEE_DEPLOY_DIR=/home/debian/idee \
-IDEE_DEPLOY_URL=https://mon-domaine.example \
-./deploy.sh
-```
-
-En cas d’échec après la bascule, le script indique l’étape et le dossier de sauvegarde et retourne un code non nul. Il ne restaure pas automatiquement la base : une telle restauration pourrait supprimer des sorties ajoutées depuis la sauvegarde. Consulter les journaux et décider d’une réparation ou d’une restauration manuelle. Une erreur du contrôle public peut aussi venir du reverse proxy alors que les conteneurs sont opérationnels.
-
-Validation locale du mécanisme, avec Docker et HTTP simulés, sans connexion au serveur :
-
-```bash
-python3 -m unittest discover -s tests -p test_deploy.py -v
-```
-
-## Installation neuve vide
-
-La configuration force `DB_CONTEXTS=production` : Liquibase crée les tables et six catégories, **aucune sortie, aucun lieu, aucun calendrier de démonstration**. Elle ne copie jamais la base locale. Les volumes existants sont conservés ; changer de contexte ne supprime pas leurs données.
-
-Prérequis serveur : Docker Engine et Docker Compose, reverse proxy HTTPS déjà administré sur le serveur. Le nom de projet Compose est `idee`. Utiliser une autre valeur `-p` si ce nom est déjà occupé.
-
-Depuis le répertoire du projet copié sur le serveur, sans `node_modules`, `.env` local ou données de DB :
-
-```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 python3 deploy/init_env.py
-# Génère deploy/.env en mode 0600, refuse d'écraser un fichier existant.
-docker compose --env-file deploy/.env up -d --build
-curl --fail http://127.0.0.1:9081/api/health
-curl --fail http://127.0.0.1:9081/api/outings
-# Attendu à la première installation : []
+chmod 600 deploy/.env
 ```
 
-Le port 9081 est lié à **127.0.0.1 seulement**. PostgreSQL et le service Java ne publient aucun port sur l’hôte. Si 9081 est occupé, modifier `IDEE_HTTP_PORT` dans `deploy/.env` avant le démarrage.
+Configurer `deploy/.env` avec les identifiants d’une base PostgreSQL dédiée **déjà créée**. Le script génère un mot de passe indicatif mais ne crée ni rôle ni base ; faire correspondre cette valeur au rôle PostgreSQL. Utiliser un rôle applicatif propriétaire de sa base, sans privilège superutilisateur. `DB_CONTEXTS=production` évite les données de démonstration. Ne jamais copier la base de développement vers la production.
 
-## Domaine et HTTPS
+Pour une installation existante, conserver ses secrets et ses données ; ne pas exécuter `init_env.py` sur une configuration déjà présente. Les fichiers privés utilisent des affectations `NOM=valeur` avec guillemets simples ou doubles si nécessaire, sans substitution shell.
 
-Raccorder le domaine au reverse proxy existant, avec un certificat TLS valide, vers `http://127.0.0.1:9081`. Préserver l’en-tête `Authorization`, prévoir 45 secondes de timeout et une limite de requête de 256 Ko. Ne pas remplacer la configuration globale du proxy ni les autres sites. La configuration précise dépendra du domaine et du proxy effectivement installé.
+```bash
+python3 deploy/database.py check
+mkdir -p .runtime/releases data/images logs
+bash deploy/build-native.sh "$PWD/.runtime/releases/initial"
+ln -s "$PWD/.runtime/releases/initial" .runtime/current
+python3 deploy/install-services.py
+sudo systemctl enable --now idee-api.service idee-ssr.service
+curl --fail http://127.0.0.1:8087/api/health
+curl --fail http://127.0.0.1:4000/_health
+```
 
-Un reverse proxy exécuté dans un autre conteneur ne doit pas utiliser son propre localhost ; dans ce cas raccorder les deux conteneurs par un réseau Docker partagé en adaptant les réseaux.
+`install-services.py` installe uniquement les unités propres au projet et recharge systemd ; il ne démarre aucun service. Pour examiner leur contenu sans modifier le système : `python3 deploy/install-services.py --output-dir /tmp/idee-units`. Les lancements/redémarrages effectifs restent à la main de l’opérateur.
 
-Vérifier ensuite :
+## Migration d’une installation existante
+
+Cette modification du dépôt ne migre pas le serveur automatiquement. Avant activation du fonctionnement natif :
+
+1. Sauvegarder et vérifier la base existante au format `pg_dump -Fc`, ainsi que les images et les fichiers de configuration privés. Ne pas utiliser une base locale de développement pour cette opération.
+2. Installer PostgreSQL nativement, créer le rôle et la base dédiés, puis restaurer **la sauvegarde de production** lors d’une fenêtre de maintenance. Vérifier les propriétaires et le nombre de sorties.
+3. Copier les images existantes dans `data/images/`, les rendre lisibles et rendre le dossier inscriptible par l’utilisateur applicatif. Conserver l’ancien stockage jusqu’à validation.
+4. Configurer les nouveaux accès PostgreSQL dans `deploy/.env`, construire une version et installer les unités comme ci-dessus.
+5. Lors de la bascule, arrêter les anciens processus qui occupent les ports ou traitent les imports, et désactiver l’ancienne tâche planifiée d’import pour éviter deux planifications. Ne supprimer aucune donnée ni sauvegarde.
+6. Démarrer les services natifs, adapter le proxy Apache, vérifier le catalogue, une fiche, une image et les compteurs de traitements. N’activer le timer quotidien qu’après ces contrôles.
+
+Les mises à jour ordinaires refusent de migrer une installation : elles exigent une base accessible, une version native existante et des services natifs actifs. Aucun changement de la base réelle ni du serveur n’est effectué lors de `./deploy.sh --check`.
+
+## Apache et HTTPS
+
+Les exemples `apache-idees.conf` et `apache-idees-http.conf` dirigent `/api/` vers `127.0.0.1:8087` et le reste vers `127.0.0.1:4000`. L’ordre des règles est important : l’API précède `/`. Node sert les fichiers compilés et rend les pages à la demande ; servir seulement le dossier browser ne suffit pas.
+
+Activer les modules proxy, proxy_http, headers, rewrite et ssl selon l’installation existante. Adapter uniquement le VirtualHost du site, conserver ses certificats et tester avec `apache2ctl configtest` avant rechargement. Les scripts de déploiement ne remplacent pas Apache et ne touchent pas TLS. Renseigner `IDEE_PUBLIC_ORIGIN` avec la vraie origine HTTPS.
+
+Après configuration :
 
 ```bash
 curl --fail https://VOTRE_DOMAINE/api/health
-curl --fail 'https://VOTRE_DOMAINE/api/outings?date=2027-01-02'
+curl --fail https://VOTRE_DOMAINE/
 ```
 
-## Données et mises à jour
-
-Le volume `idee_idee-db` conserve PostgreSQL. Ne jamais utiliser `docker compose down -v` sur cette installation en production. Sauvegarder avec :
+## Mise à jour depuis la machine de développement
 
 ```bash
-mkdir -p backups
-chmod 700 backups
-docker compose --env-file deploy/.env exec -T db pg_dump -U idee -d idee -Fc > backups/idee.dump
-chmod 600 backups/idee.dump
+./deploy.sh --check       # Archive vérifiée, aucune connexion distante
+./deploy.sh               # Mise à jour native de l’installation existante
+./deploy.sh --with-mcp    # Met aussi à jour les dépendances MCP et son tunnel
 ```
 
-Avant une mise à jour : sauvegarde, copie des sources sans remplacer `deploy/.env`, puis `docker compose --env-file deploy/.env up -d --build`. Les migrations Liquibase sont appliquées par le service.
+Cible par défaut : `ovh:/home/debian/idee`, site `https://idees.cavousdit.com`. Variables facultatives : `IDEE_DEPLOY_HOST`, `IDEE_DEPLOY_DIR`, `IDEE_DEPLOY_URL`. SSH doit fonctionner avec une clé ou un agent (`BatchMode=yes`).
 
-Consulter les journaux : `docker compose --env-file deploy/.env logs --tail=100 api ssr web`. Ne pas publier les sorties de `docker compose config` (elles peuvent contenir les secrets).
+Le script transfère uniquement les sources. Sur le serveur, il vérifie les services et PostgreSQL, construit une nouvelle version pendant que l’ancienne fonctionne, sauvegarde et vérifie la base, puis conserve les sources et images dans `backups/deploy-*`. Il synchronise les sources sans toucher aux secrets, données, environnements Python ou anciennes versions, actualise les unités systemd, bascule le lien courant et redémarre uniquement `idee-api` et `idee-ssr`. Il vérifie ensuite API, rendu SSR, identifiant de version local et version servie publiquement. Une simple réponse HTTP 200 ne suffit pas à déclarer un déploiement réussi.
 
-Les ajouts sont effectués via [l’API et les outils MCP](../docs/api-mcp.md). Le calcul par date est immédiat et à la demande. Les fiches comportent aussi un cache de prochaines séances ; voir les consignes de maintenance du calendrier dans le README principal.
+L’utilisateur distant doit pouvoir exécuter sans mot de passe les commandes `sudo` nécessaires à l’installation **des unités propres au projet**, au `daemon-reload` et au redémarrage de ces deux services (et du tunnel avec `--with-mcp`). Configurer ces droits avec l’administrateur. Ne pas accorder un accès sudo général à partir d’un exemple automatique.
 
-## Tests de recette isolés
+En cas d’échec, les sauvegardes et les versions sont conservées. Aucun retour arrière de base automatique : Liquibase peut avoir appliqué une migration. Après vérification de sa compatibilité avec le schéma courant, l’opérateur peut repointer `.runtime/current` vers le chemin enregistré dans `previous-release.txt`, puis redémarrer les services. Ne pas effacer les anciennes versions tant qu’un processus ou une reprise peut en dépendre.
 
-Le projet Compose `idee-integration`, sur le port 9082, sert exclusivement aux tests. `tests/test_api.py` exige `IDEE_ALLOW_TEST_WRITES=isolated` et une base initialement vide. Il écrit volontairement des fiches de test. Ne jamais le lancer sur une base publique. `tests/test_mcp.py` teste le véritable protocole MCP stdio et trois outils sur la même base isolée.
+## Import quotidien et traitements
 
-## Archive transférable
+`idee-import.service` lance le même JAR en mode non HTTP. `idee-import.timer` le déclenche chaque jour à 04:00 UTC (06:00 Paris en été, 05:00 en hiver). La clé peut être définie dans `deploy/.env` ou dans `deploy/.env.datatourisme` privé. L’API garde Mistral, OpenAI et les images actifs pour terminer les files en arrière-plan.
 
-`./deploy/package.sh` prépare `/tmp/idee-deploy.tar.gz` avec les sources et les fichiers de déploiement, en excluant tous les fichiers `.env`, les dépendances installées, les données, les caches et les sorties compilées locales. Les secrets sont générés directement sur le dédié avec `deploy/init_env.py`. Cette archive ne contient aucune copie de la base locale.
+```bash
+sudo systemctl enable --now idee-import.timer
+systemctl list-timers idee-import.timer
+sudo systemctl start idee-import.service  # Lancement manuel explicite
+journalctl -u idee-import.service -n 100
+```
 
-## Déploiement effectif — 23 septembre 2026
+Par défaut `DATATOURISME_ENABLED=false` dans l’API lorsque le timer possède la planification. Pour piloter l’import par l’API et `import-outings.sh`, activer cette variable dans `deploy/.env`, redémarrer `idee-api` et désactiver le timer si l’API devient le planificateur. Le helper historique `datatourisme-cron.sh` reste un lanceur natif manuel ; aucun cron n’est installé par défaut. `install-datatourisme-cron.py` lit une clé depuis une entrée JSON privée, installe les unités et active le timer natif.
 
-- URL : https://idees.cavousdit.com ; DNS IPv4 déjà pointé vers OVH.
-- Serveur : alias SSH `ovh`, sources `/home/debian/idee`, projet Compose `idee`.
-- Après déploiement de la version SSR, quatre conteneurs : `idee-db-1`, `idee-api-1`, `idee-ssr-1`, `idee-web-1`. Seul Nginx est publié sur `127.0.0.1:9081`. Le service SSR reste interne.
-- Apache système : `/etc/apache2/sites-available/idees.cavousdit.com.conf`, vhosts 80/443 ; HTTP redirige vers HTTPS, sauf le chemin ACME.
-- Certificat Let's Encrypt : `/etc/letsencrypt/live/idees.cavousdit.com/`, échéance initiale 22 décembre 2026. Renouvellement via le timer Certbot existant et le webroot `/var/www/idee-acme` ; hook dédié `/etc/letsencrypt/renewal-hooks/deploy/idee-reload-apache` pour recharger Apache.
-- Clés privées de cette instance : `/home/debian/idee/deploy/.env` (0600), générées sur le serveur, distinctes des clés locales.
-- Recette publique : site/health/lecture HTTP 200, redirection 301, POST sans clé 401 et avec clé + JSON incomplet 400. Zéro sortie, six catégories ; aucune donnée de test ajoutée.
-- Les configurations Apache finales sont conservées dans `deploy/apache-idees.conf` et le hook dans `deploy/idee-reload-apache.sh`. La configuration HTTP seule est celle d’amorçage pour obtenir le premier certificat.
+Les clés Mistral/OpenAI sont chargées uniquement par Java, jamais par Node ni dans les sources frontend. L’import ponctuel désactive son téléchargeur d’images et son worker OpenAI : l’API continue ces traitements. Les reprises, quotas, verrous et identifiants des batches restent dans PostgreSQL.
 
-- Test de renouvellement Let’s Encrypt (`certbot renew --cert-name idees.cavousdit.com --dry-run`) réussi après mise en place du HTTPS.
+## Images, sauvegardes et diagnostic
 
-## Rendu serveur
+```bash
+./download-images.sh --watch
+journalctl -u idee-api.service -u idee-ssr.service -n 100
+systemctl status idee-api.service idee-ssr.service
+mkdir -p backups
+python3 deploy/database.py backup "$PWD/backups/idee-$(date -u +%Y%m%dT%H%M%SZ).dump"
+tar -czf backups/images.tar.gz data/images
+```
 
-Le frontend utilise désormais Angular SSR via le service Node `ssr`. Le déploiement construit et recrée `api`, `ssr` et `web` ensemble. Renseigner `IDEE_PUBLIC_ORIGIN` dans `deploy/.env` si le domaine public diffère de `https://idees.cavousdit.com` ; cette origine détermine les URL canoniques. La configuration Nginx transmet toutes les pages à SSR et conserve les fichiers statiques et l’API sur leurs chemins habituels. Voir [configuration et vérifications SSR](../docs/server-rendering.md).
+Les sauvegardes contiennent des données privées : les garder dans un dossier 0700 et ne pas les publier. Ne pas afficher `deploy/.env` dans les journaux. Les images sont dans le projet ; aucune synchronisation des sources ne doit les effacer.
 
-## Réécriture automatique des descriptions
+## Vérifications sans production
 
-Les migrations 013/014 mettent les descriptions françaises nouvelles ou modifiées dans une file persistante, traitée par l’API Batch Mistral (lots de 500 maximum). Avec `MISTRAL_API_KEY` renseignée dans `deploy/.env` et `MISTRAL_AUTO_ENABLED=true` (défaut), l’API et le cron quotidien peuvent traiter cette file. Le cron lit maintenant la configuration commune et le déploiement actualise son image `idee-datatourisme:cron` à partir de `idee-api`. Les appels manuels et automatiques réutilisent les textes déjà à jour ; les erreurs sont reprises progressivement. La génération unitaire reste immédiate. Garder l’API active avec la clé pour récupérer les résultats Batch sans attendre le cron quotidien ; celui-ci termine après soumission, sans attendre le traitement distant. Le suivi expose les batches et les éventuelles soumissions incertaines à vérifier avant réenvoi. Voir [le fonctionnement et le suivi](../docs/datatourisme.md).
+```bash
+python3 tests/test_deploy.py
+./deploy.sh --check
+mvn -f idee-service/pom.xml test
+npm --prefix idee-front run build
+node tests/test_ssr.mjs
+```
 
-## Traductions OpenAI à la demande
-
-Migration 015 : stockage et file séparés pour traduire le titre et les descriptions longue/courte en en/de/it/nl/es. Configurer `OPENAI_API_KEY` dans le `deploy/.env` privé de l’instance cible ; aucune clé locale n’est transférée par le déploiement. Modèle configurable par `OPENAI_TRANSLATION_MODEL` (défaut `gpt-4.1-mini-2025-04-14`). `OPENAI_TRANSLATIONS_ENABLED=false` coupe soumission et collecte.
-
-La configuration et la migration ne lancent aucun rattrapage : seul `POST /api/admin/translations/generate-missing?limit=500` avec le Bearer d’import ajoute des demandes. Garder ensuite l’API active pour les soumettre et collecter via OpenAI Batch. Suivi : `GET /api/admin/translations/status`. Voir [les commandes et règles de reprise](../docs/api-mcp.md#traductions-du-titre-et-des-descriptions-avec-openai-batch).
+Les tests de déploiement utilisent des commandes simulées ; ils ne se connectent pas au serveur. Pour les recettes PostgreSQL d’import, utiliser uniquement `python3 scripts/check_description_jobs.py` et ses schémas jetables, fournisseurs désactivés. Les anciens fichiers d’orchestration et de construction de conteneurs ne font plus partie du projet.

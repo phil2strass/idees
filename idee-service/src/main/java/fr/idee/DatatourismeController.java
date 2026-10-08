@@ -4,6 +4,7 @@ import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/admin/datatourisme")
@@ -16,6 +17,20 @@ public class DatatourismeController {
     public Map<String,Object> sync() {
         int queued=importer.requestSync();
         return Map.of("queuedDepartments",queued,"statusUrl","/api/admin/datatourisme/status");
+    }
+    @GetMapping("/imports")
+    public List<Map<String,Object>> imports(@RequestParam(defaultValue="50") int limit,
+            @RequestParam(defaultValue="0") int offset) {
+        if(limit<1 || limit>200 || offset<0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Limite comprise entre 1 et 200, offset positif ou nul.");
+        return db.queryForList("""
+            SELECT id,source,department,mode,state,started_at AS "startedAt",completed_at AS "completedAt",
+              last_processed_at AS "lastProcessedAt",pages,objects,new_outings AS "newOutings",
+              updated_outings AS "updatedOutings",mistral_outings AS "mistralOutings",
+              description_translation_outings AS "descriptionTranslationOutings",
+              title_translation_outings AS "titleTranslationOutings",last_error AS "lastError"
+            FROM idee_import_run ORDER BY started_at DESC,id LIMIT ? OFFSET ?
+            """,limit,offset);
     }
     @GetMapping("/status")
     public Map<String,Object> status() {

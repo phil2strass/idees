@@ -21,7 +21,7 @@ public class IdeeApplication {
    SpringApplication.run(IdeeApplication.class,args);
    return;
   }
-  // A separate container for cron: same mapper, quota, checkpoints and database.
+  // A separate native import process: same mapper, quota, checkpoints and database.
   var app=new SpringApplication(IdeeApplication.class);
   app.setWebApplicationType(WebApplicationType.NONE);
   int result=1;

@@ -51,7 +51,7 @@ public class CatalogController {
  public Map<String,Object> outing(@PathVariable String slug) {
   var rows=db.queryForList(base()+" WHERE o.status='published' AND o.slug=?",slug);
   if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Sortie introuvable");
-  var row=rows.getFirst();enrich(row,null,true,null);
+  var row=rows.getFirst();enrich(row,null,true,null,true);
   row.put("sourceDetails",sourceDetails.forOuting(row.get("id")));
   row.put("descriptions",descriptions.forOuting(row.get("id")));
   row.put("translations",descriptions.translationsForOuting(row.get("id")));
@@ -142,6 +142,9 @@ public class CatalogController {
    FROM idee_outing o LEFT JOIN idee_place p ON p.id=o.place_id
    """;}
  private void enrich(Map<String,Object> row,Map<Long,List<Map<String,Object>>> daily,boolean includeCancelled,LocalDate date) {
+   enrich(row,daily,includeCancelled,date,false);
+ }
+ private void enrich(Map<String,Object> row,Map<Long,List<Map<String,Object>>> daily,boolean includeCancelled,LocalDate date,boolean includeCurrentWeek) {
    Object id=row.get("id");
    var urls=new LinkedHashMap<String,String>(); urls.put("fr",(String)row.get("url"));
    for(var route:db.queryForList("SELECT language,path FROM idee_public_route WHERE outing_id=? AND canonical",id))
@@ -150,7 +153,7 @@ public class CatalogController {
    row.put("categories", db.queryForList("SELECT c.slug,c.name FROM idee_category c JOIN idee_outing_category oc ON oc.category_id=c.id WHERE oc.outing_id=? ORDER BY c.id",id));
    LocalDate priceDate=date==null?LocalDate.now(ZoneId.of("Europe/Paris")):date;
    row.put("prices",db.queryForList("SELECT label,amount,price_type AS type,currency,conditions FROM idee_price WHERE outing_id=? AND (valid_from IS NULL OR valid_from<=?) AND (valid_until IS NULL OR valid_until>=?) ORDER BY amount NULLS LAST",id,priceDate,priceDate));
-   row.put("images",db.queryForList("SELECT url,alt,credit,license,is_primary AS \"primary\" FROM idee_media WHERE outing_id=? ORDER BY is_primary DESC,position,id",id));
+   row.put("images",db.queryForList("SELECT COALESCE(d.local_url,m.url) AS url,m.alt,m.credit,m.license,m.is_primary AS \"primary\" FROM idee_media m LEFT JOIN idee_image_download d ON d.source_url=m.url AND d.state='ready' WHERE m.outing_id=? ORDER BY m.is_primary DESC,m.position,m.id",id));
    row.put("schedules", db.queryForList("SELECT label,timezone,all_day AS \"allDay\" FROM idee_schedule WHERE outing_id=? AND enabled ORDER BY id",id));
    if(daily!=null) {
      var sessions=daily.getOrDefault(((Number)id).longValue(),List.of());
@@ -164,8 +167,9 @@ public class CatalogController {
      JOIN idee_outing o ON o.id=s.outing_id
      LEFT JOIN idee_place p ON p.id=COALESCE(oc.place_id,s.place_id)
      LEFT JOIN idee_place base ON base.id=o.place_id
-     WHERE s.outing_id=? AND s.enabled AND oc.ends_at > now()
-     """+(includeCancelled?"":" AND oc.status <> 'cancelled'")+" ORDER BY oc.starts_at",id));
+     WHERE s.outing_id=? AND s.enabled AND oc.ends_at >
+       CASE WHEN ? THEN date_trunc('week',now() AT TIME ZONE s.timezone) AT TIME ZONE s.timezone ELSE now() END
+     """+(includeCancelled?"":" AND oc.status <> 'cancelled'")+" ORDER BY oc.starts_at",id,includeCurrentWeek));
  }
  private Map<Long,List<Map<String,Object>>> forDay(LocalDate day,boolean includeCancelled) {
    return forRange(day,day.plusDays(1),includeCancelled);

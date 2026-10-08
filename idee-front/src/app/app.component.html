@@ -49,19 +49,22 @@
       >{{ t("Trouver une sortie") }} <span aria-hidden="true">↗</span></a
     >
   </nav>
-  <label class="language-picker">
-    <span>{{ t("Langue du site") }}</span>
-    <select
-      [value]="i18n.current()"
-      (change)="i18n.switchTo($any($event.target).value)"
-      [attr.aria-label]="t('Langue du site')"
-    >
-      @for (language of i18n.languages; track language.code) {
-        <option [value]="language.code" [attr.lang]="language.code">
-          {{ language.name }}
-        </option>
-      }
-    </select>
-  </label>
+  <div class="language-picker" role="group" [attr.aria-label]="t('Langue du site')">
+    @for (language of i18n.languages; track language.code) {
+      <button
+        type="button"
+        class="language-option"
+        [class.active]="i18n.current() === language.code"
+        [attr.aria-pressed]="i18n.current() === language.code"
+        [attr.aria-label]="language.name"
+        [attr.title]="language.name"
+        [attr.lang]="language.code"
+        [attr.data-language]="language.code"
+        (click)="i18n.switchTo(language.code)"
+      >
+        <img [src]="'assets/flags/' + language.code + '.svg'" alt="" width="24" height="18" />
+      </button>
+    }
+  </div>
 </header>
 <router-outlet />

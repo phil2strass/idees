@@ -14,5 +14,10 @@ backups/
 audits/
 
 .tunnel/
-.datatourisme-build/
 .datatourisme-cron.lock
+**/data/images/
+/data/
+
+.runtime/
+logs/
+.deploy.lock
